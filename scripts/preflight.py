@@ -68,18 +68,140 @@ def check_3_yaml_parses() -> None:
         fail(f"firmware/livingroom.yaml does not parse: {e}")
 
 
-def check_4_gate_keys() -> None:
-    text = MAIN_YAML.read_text(encoding="utf-8")
-    missing = [f"gate_energy_{i}:" for i in range(16) if f"gate_energy_{i}:" not in text]
-    if missing:
-        fail(f"Missing gate_energy_N entries: {missing[:3]}…")
+def _strip_yaml_comments(text: str) -> str:
+    """Drop YAML comments from a string.
+
+    A line starting with `#` (after optional whitespace) is a
+    full-line comment. A `#` after non-whitespace starts a trailing
+    comment. We strip everything from the first unquoted `#` to
+    the end of the line. The state machine is simple; YAML
+    strings rarely embed unquoted `#` in this firmware.
+
+    Used by check_4_ld2410_yaml to avoid substring false-positives
+    where the docs/comment text mentions `ld2420` / `ld2420_energy`
+    for historical context.
+    """
+    out_lines: list[str] = []
+    for line in text.splitlines():
+        in_single = False
+        in_double = False
+        cut = -1
+        for i, ch in enumerate(line):
+            if ch == "'" and not in_double:
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                in_double = not in_double
+            elif ch == "#" and not in_single and not in_double:
+                cut = i
+                break
+        if cut >= 0:
+            line = line[:cut].rstrip()
+        if line.strip():
+            out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+def check_4_ld2410_yaml() -> None:
+    """Guard the v1.1.0 LD2410 configuration.
+
+    Verifies that the v1.1.0 firmware/livingroom.yaml targets the
+    LD2410 sensor (not the v1.0.0 LD2420). The check is named
+    `check_4_ld2410_yaml` (replaces the old `check_4_gate_keys`
+    that asserted 16 `gate_energy_N:` keys for the LD2420 build).
+
+    Verifies that:
+    - the YAML contains an `ld2410:` block (hub)
+    - the YAML contains a `binary_sensor: - platform: ld2410` block
+    - the YAML contains a `sensor: - platform: ld2410` block
+    - the `uart.baud_rate:` substitution is `${ld2410_baud}` (NOT
+      `${ld2420_baud}`), and the substitution defaults to `256000`
+    - there is at least one `has_target:`/`has_moving_target:`/
+      `has_still_target:` binary sensor
+    - the legacy `ld2420:` / `platform: ld2420` strings are
+      NOT present (would silently compile but produce a sensor
+      that never reports anything because no LD2420 is attached)
+    - the legacy `external_components: ... [ld2420_energy]` block
+      is NOT loaded (the LD2410 build does not need the local
+      component; the directory stays in the repo for v1.0.0
+      archives only)
+    """
+    raw_text = MAIN_YAML.read_text(encoding="utf-8")
+    text = _strip_yaml_comments(raw_text)
+    failures: list[str] = []
+
+    if "ld2410:" not in text:
+        failures.append("missing top-level `ld2410:` hub block")
+    if "platform: ld2410" not in text:
+        failures.append(
+            "missing any `platform: ld2410` block (binary_sensor / "
+            "sensor / number / select / button / switch)"
+        )
+    if "uart.baud_rate: ${ld2410_baud}" not in text and "baud_rate: ${ld2410_baud}" not in text:
+        failures.append(
+            "uart baud rate is not bound to ${ld2410_baud} — "
+            "should be `256000` (LD2410 out-of-the-box), not "
+            "`115200` (LD2420)"
+        )
+    if "256000" not in text:
+        failures.append(
+            "LD2410 default baud `256000` not referenced anywhere "
+            "in the YAML (expected as the substitution default)"
+        )
+    if not any(
+        keyword in text for keyword in ("has_target:", "has_moving_target:", "has_still_target:")
+    ):
+        failures.append(
+            "no `has_target:` / `has_moving_target:` / `has_still_target:` "
+            "binary sensor defined (LD2410 hub needs at least one)"
+        )
+    if "ld2420:" in text or "platform: ld2420" in text:
+        failures.append(
+            "the YAML still contains `ld2420:` / `platform: ld2420` "
+            "references — for a node with an LD2420 module, use the "
+            "v1.0.0 firmware instead (or restore the v1.0.0 YAML)"
+        )
+    if "ld2420_energy" in text and "external_components" in text:
+        failures.append(
+            "the legacy `external_components: ... [ld2420_energy]` "
+            "block is loaded — the LD2410 firmware does not need it "
+            "and it will fail to build because `components/"
+            "ld2420_energy/sensor.py` references the upstream "
+            "LD2420Component which is not present in the LD2410 "
+            "hub context"
+        )
+    if "ld2420_baud" in text:
+        failures.append(
+            "the `ld2420_baud` substitution is still present — the "
+            "LD2410 build uses `ld2410_baud: 256000`"
+        )
+
+    if failures:
+        joined = "; ".join(failures)
+        fail(
+            f"firmware/livingroom.yaml is not a valid v1.1.0 LD2410 "
+            f"config. {joined}. See the v1.0.0 firmware tag and the "
+            f"docs/RELEASE_NOTES_v1.0.0.md for the LD2420 layout, or "
+            f"the docs/RELEASE_NOTES_v1.1.0.md draft for the LD2410 "
+            f"layout."
+        )
 
 
 def check_5_component_files() -> None:
+    """Verify the legacy `components/ld2420_energy/` directory is
+    still present (v1.0.0 archive). The v1.1.0 LD2410 build does
+    not need the local component, but the directory must remain
+    on disk for `git status` to be clean across both firmware
+    variants.
+    """
     required = ["__init__.py", "sensor.py", "sensor.h", "sensor.cpp"]
     missing = [f for f in required if not (COMPONENT / f).exists()]
     if missing:
-        fail(f"components/ld2420_energy/ missing: {missing}")
+        fail(
+            f"components/ld2420_energy/ missing: {missing} — the "
+            "directory is a v1.0.0 archive (LD2420 16-gate energy) "
+            "and must be kept on disk for both firmware variants "
+            "to be buildable from the same checkout."
+        )
 
 
 def check_6_cstddef_workaround() -> None:
@@ -231,7 +353,7 @@ def main() -> int:
     check_1_secrets()
     check_2_no_placeholders()
     check_3_yaml_parses()
-    check_4_gate_keys()
+    check_4_ld2410_yaml()
     check_5_component_files()
     check_6_cstddef_workaround()
     check_6b_platformio_options_structure()

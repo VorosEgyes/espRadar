@@ -1,8 +1,10 @@
-# espRadar — D1 mini + HLK-LD2420 mmWave radar for openHAB
+# espRadar — D1 mini + HLK-LD2410 mmWave radar for openHAB
 
-Hi-Link HLK-LD2420 24 GHz mmWave human-presence radar wired to a **Wemos D1 mini (ESP8266)** and exposed to **openHAB 5.x** via the ESPHome Native API. No MQTT broker required.
+Hi-Link HLK-LD2410 24 GHz mmWave human-presence radar wired to a **Wemos D1 mini (ESP8266)** and exposed to **openHAB 5.x** via the ESPHome Native API. No MQTT broker required.
 
 This is the home-automation companion to the `BirdNest` / `RaisedGarden` VorosEgyes project family — same firmware + device-class conventions, no separate cloud, fully local.
+
+> **v1.0.0 used the LD2420 module (16 gates, 115200 baud). v1.1.0+ uses the LD2410 (9 gates, 256000 baud).** The v1.0.0 firmware is still available on the [GitHub Releases page](https://github.com/VorosEgyes/espRadar/releases/tag/v1.0.0) for any node wired to an LD2420. The pinout is identical between the two modules.
 
 ---
 
