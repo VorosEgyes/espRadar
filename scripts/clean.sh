@@ -2,11 +2,11 @@
 # Wipe the ESPHome + PlatformIO caches so a stale toolchain cannot be
 # picked up by a build that was started on an old toolchain.
 #
-# After this runs, the next `esphome run firmware/livingroom.yaml` will
+# After this runs, the next `esphome run firmware/radar.yaml` will
 # re-download:
 #   - platformio/espressif8266@4.2.1    (default; BL-01's 2.6.3 pin was
 #                                         structurally incompatible with
-#                                         ESPHome 2026.9.1, see BL-01a)
+#                                         ESPHome 2026.9.1, see BL-01b)
 #   - toolchain-xtensa@3.x              (gcc 10.3.0)
 #   - framework-arduinoespressif8266@3.1.2
 #
@@ -47,4 +47,4 @@ else
 fi
 
 echo "== Done =="
-echo "Next: cd firmware && esphome run livingroom.yaml"
+echo "Next: cd firmware && esphome run radar.yaml"

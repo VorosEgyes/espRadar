@@ -34,9 +34,9 @@ fi
 TITLE_NAME="$(tr '[:lower:]' '[:upper:]' <<< "${NAME:0:1}")${NAME:1}"
 
 sed \
-    -e "s|^  device_name: radar$|  device_name: ${NAME}|" \
-    -e "s|^  friendly_name: Radar presence$|  friendly_name: ${TITLE_NAME} presence|" \
-    -e "s|^      name: Radar presence$|      name: ${TITLE_NAME} presence|" \
+    -e "s|^  device_name: radar\b|  device_name: ${NAME}|" \
+    -e "s|^  friendly_name: Radar presence\b|  friendly_name: ${TITLE_NAME} presence|" \
+    -e "s|^      name: Radar presence\b|      name: ${TITLE_NAME} presence|" \
     "${SRC}" > "${DST}"
 
 echo "Created ${DST}. Edit it, then:"

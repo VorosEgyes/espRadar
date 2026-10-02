@@ -19,19 +19,33 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
+
+# PyYAML is always available where `esphome` is installed (the
+# Mac). The preflight is also run from the NAS for a structural
+# sanity check before committing, and the NAS does not have
+# PyYAML. The import is therefore wrapped in a try/except: the
+# bare-minimum check (check_3) still works without PyYAML, and
+# the structural check (check_6b) is a no-op when PyYAML is
+# missing.
+try:
+    import yaml  # type: ignore[import-not-found]
+    _HAS_YAML = True
+except ImportError:
+    yaml = None  # type: ignore[assignment]
+    _HAS_YAML = False
 
 
 # ESPHome extends YAML with `!secret` tags — load them as plain strings so
 # preflight does not require the ESPHome Python environment to parse the
 # configuration files.
-class _SecretLoader(yaml.SafeLoader):
+class _SecretLoader(yaml.SafeLoader if _HAS_YAML else object):  # type: ignore[misc]
     pass
 
 
-_SecretLoader.add_constructor(
-    "!secret", lambda loader, node: loader.construct_scalar(node)
-)
+if _HAS_YAML:
+    _SecretLoader.add_constructor(  # type: ignore[attr-defined]
+        "!secret", lambda loader, node: loader.construct_scalar(node)
+    )
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -62,11 +76,25 @@ def check_2_no_placeholders() -> None:
 
 
 def check_3_yaml_parses() -> None:
+    """Quick syntax check: the YAML must parse.
+
+    The full structural validation happens in
+    `check_6b_platformio_options_structure` (PyYAML parse +
+    `platformio_options.build_flags` schema check). This check is
+    a fast early-exit so a parse error in the YAML gets a clear
+    error message before the more expensive PyYAML walk.
+
+    When PyYAML is not available (NAS fallback), this check is
+    a no-op — the YAML structure is not validated, but the
+    substring checks in `check_4_ld2410_yaml` still run.
+    """
+    if not _HAS_YAML:
+        return
     if not MAIN_YAML.exists():
         fail(f"{MAIN_YAML} not found.")
     try:
-        yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)
-    except yaml.YAMLError as e:
+        yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)  # type: ignore[union-attr]
+    except yaml.YAMLError as e:  # type: ignore[union-attr]
         fail(f"firmware/radar.yaml does not parse: {e}")
 
 
@@ -161,11 +189,16 @@ def check_4_ld2410_yaml() -> None:
     # page (esphome.io/components/sensor/ld2410/) still shows
     # `fw_version:` which is misleading. Verified against
     # esphome/esphome@2026.9.1 esphome/components/ld2410/text_sensor.py
-    if "fw_version" in text:
+    #
+    # The check is anchored on `fw_version:` (with the trailing
+    # colon — the YAML key) to avoid false positives on words
+    # like `fw_version_changed` or text content like
+    # "fw_version error message".
+    if re.search(r"^\s*fw_version:\s*$", text, re.MULTILINE):
         failures.append(
-            "the YAML still contains `fw_version` — the LD2410 "
-            "text_sensor schema key in ESPHome 2026.9.1 is `version:` "
-            "(verified against esphome@2026.9.1 "
+            "the YAML still contains `fw_version:` (as a YAML key) — "
+            "the LD2410 text_sensor schema key in ESPHome 2026.9.1 is "
+            "`version:` (verified against esphome@2026.9.1 "
             "esphome/components/ld2410/text_sensor.py). The doksi "
             "page (esphome.io) is out of date; the code is the source "
             "of truth."
@@ -175,11 +208,16 @@ def check_4_ld2410_yaml() -> None:
     # doksi page (esphome.io) shows `query` which is misleading.
     # Verified against esphome/esphome@2026.9.1
     # esphome/components/ld2410/button/__init__.py.
-    if re.search(r"^  - platform: ld2410\s*$", text, re.MULTILINE):
-        # The LD2410 button block exists; verify the key.
-        # We look for the bare `query:` line at the right indent
-        # (4 spaces inside the button block).
-        if re.search(r"^    query:\s*$", text, re.MULTILINE):
+    #
+    # The check is scoped to the `button:` block to avoid false
+    # positives on `name:` or `id:` fields in other platform blocks
+    # that happen to contain the substring "query".
+    button_match = re.search(
+        r"^button:\n((?:  - .*?\n)*?)(?=^[^ ]|\Z)", text, re.MULTILINE | re.DOTALL
+    )
+    if button_match:
+        button_block = button_match.group(1)
+        if re.search(r"^    query:\s*$", button_block, re.MULTILINE):
             failures.append(
                 "the LD2410 button block uses `query:` — the schema "
                 "key in ESPHome 2026.9.1 is `query_params:` (CONF_QUERY_PARAMS). "
@@ -192,15 +230,24 @@ def check_4_ld2410_yaml() -> None:
             "references — for a node with an LD2420 module, use the "
             "v1.0.0 firmware instead (or restore the v1.0.0 YAML)"
         )
-    if "ld2420_energy" in text and "external_components" in text:
-        failures.append(
-            "the legacy `external_components: ... [ld2420_energy]` "
-            "block is loaded — the LD2410 firmware does not need it "
-            "and it will fail to build because `components/"
-            "ld2420_energy/sensor.py` references the upstream "
-            "LD2420Component which is not present in the LD2410 "
-            "hub context"
-        )
+    # The legacy `external_components: ... [ld2420_energy]` block is
+    # NOT loaded by v1.1.0 (LD2410 is upstream-native). The check
+    # looks for the *active* (comment-stripped) string, so the
+    # v1.0.0-history references in YAML comments do not trip it.
+    if re.search(r"^\s*external_components:\s*$", text, re.MULTILINE):
+        # There is an `external_components:` block; verify it does
+        # not load the legacy `ld2420_energy` component. (v1.1.0
+        # does not need any external_components; the LD2410
+        # component is upstream-native.)
+        if "ld2420_energy" in text:
+            failures.append(
+                "the YAML's `external_components:` block loads "
+                "`ld2420_energy` — the LD2410 firmware does not need "
+                "it and it will fail to build because "
+                "`components/ld2420_energy/sensor.py` references the "
+                "upstream LD2420Component which is not present in "
+                "the LD2410 hub context"
+            )
     if "ld2420_baud" in text:
         failures.append(
             "the `ld2420_baud` substitution is still present — the "
@@ -220,10 +267,17 @@ def check_4_ld2410_yaml() -> None:
 
 def check_5_component_files() -> None:
     """Verify the legacy `components/ld2420_energy/` directory is
-    still present (v1.0.0 archive). The v1.1.0 LD2410 build does
-    not need the local component, but the directory must remain
-    on disk for `git status` to be clean across both firmware
-    variants.
+    still present (v1.0.0 archive).
+
+    The v1.1.0 LD2410 build does not need the local component, but
+    the directory must remain on disk for `git checkout v1.0.0 --`
+    to work when reverting a node from v1.1.0 to v1.0.0. (See
+    `docs/RELEASE_NOTES_v1.1.0.md` → "How to revert a node to
+    v1.0.0 (LD2420 hardware)".) It is unrelated to `git status`
+    hygiene — the `clean.sh` script and `firmware/.gitignore`
+    (added by ESPHome on first build) handle the build-cache
+    files that pollute `git status` (e.g. `firmware/.esphome/`,
+    `firmware/components/`).
     """
     required = ["__init__.py", "sensor.py", "sensor.h", "sensor.cpp"]
     missing = [f for f in required if not (COMPONENT / f).exists()]
@@ -231,8 +285,8 @@ def check_5_component_files() -> None:
         fail(
             f"components/ld2420_energy/ missing: {missing} — the "
             "directory is a v1.0.0 archive (LD2420 16-gate energy) "
-            "and must be kept on disk for both firmware variants "
-            "to be buildable from the same checkout."
+            "and must be kept on disk for `git checkout v1.0.0 --` to "
+            "revert a node to the LD2420 firmware."
         )
 
 
@@ -260,6 +314,17 @@ def check_6_cstddef_workaround() -> None:
     "std::size_t has not been declared" cascade that the original
     BL-01 was trying to avoid. If `cstddef` is substituted for
     `stddef.h`, the C TUs fail to compile.
+
+    This check is the **substring fallback** — it only verifies
+    that the literal string `-include stddef.h` appears in the
+    YAML. The full structural validation (YAML list, no `cstddef`
+    typo) happens in `check_6b_platformio_options_structure`.
+    On the Mac (where PyYAML is always available) both run; on
+    the NAS (where PyYAML is not installed) only this check
+    runs and the structural validation is skipped. The redundancy
+    is intentional: the substring check works everywhere and
+    catches the common typo; the PyYAML check catches the rare
+    "list-vs-string" YAML type mismatch.
     """
     text = MAIN_YAML.read_text(encoding="utf-8")
     if "-include stddef.h" not in text:
@@ -297,20 +362,18 @@ def check_6b_platformio_options_structure() -> None:
     Also catches the "cstddef vs stddef.h" failure mode that
     would compile the .cpp translation units but fail on the .c
     ones in ESPAsyncTCP / noise-c.
+
+    No-op when PyYAML is not available (NAS / CI without it).
+    The substring fallback `check_6_cstddef_workaround` still
+    runs in that case.
     """
-    try:
-        import yaml  # noqa: F401  (PyYAML is on the Mac where this runs)
-    except ImportError:
-        # PyYAML not available (NAS / CI without it) — fall back to the
-        # substring check in check_6_cstddef_workaround. A NAS-side
-        # limitation, not a project defect.
+    if not _HAS_YAML:
         return
-    import yaml  # type: ignore[no-redef]
 
     cfg = None
     try:
-        cfg = yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)
-    except yaml.YAMLError as e:
+        cfg = yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)  # type: ignore[union-attr]
+    except yaml.YAMLError as e:  # type: ignore[union-attr]
         fail(f"firmware/radar.yaml does not parse: {e}")
 
     if cfg is None:
