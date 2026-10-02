@@ -50,7 +50,8 @@ wifi:
   # DHCP — host reservation by MAC on the router is the recommended way to
   # give each node a stable IP. See README → "Network setup".
   ap:
-    ssid: "${friendly_name} Fallback Hotspot"
+    # SSID limit is 32 — friendly_name is too verbose; use the short device_name.
+    ssid: "${device_name} Fallback"
     password: !secret fallback_ap_password
 
 captive_portal:
