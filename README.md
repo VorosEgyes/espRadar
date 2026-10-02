@@ -52,14 +52,28 @@ The D1 mini MAC is printed on the silkscreen under the USB connector. Bind each 
 
 ## Firmware
 
-Built with **ESPHome 2025.11+** (the upstream `ld2420` component has been merged since 2023-11 and gets the maintenance fixes every release, e.g. 2025-11.0 `[ld2420] Eliminate substr() allocation in firmware version parsing`).
+Built with **ESPHome 2026.9.1** (the upstream `ld2420` component has been merged since 2023-11 and gets the maintenance fixes every release, e.g. 2025-11.0 `[ld2420] Eliminate substr() allocation in firmware version parsing`).
+
+> ⚠️ **Toolchain pin (BL-01).** `firmware/livingroom.yaml` pins
+> `espressif8266@2.6.3` under the `esp8266:` block. ESPHome 2025.11+
+> defaults to `espressif8266@4.2.1`, which pulls
+> `toolchain-xtensa@3.x` (gcc 10.3.0) — its libstdc++ headers are
+> inconsistent with `-std=gnu++20` and the build dies with a
+> `'std::size_t' has not been declared` cascade. The 2.6.3 pin pulls
+> `toolchain-xtensa@~2.100100.0` (gcc 5.2) where the same code builds.
+> See `RELEASE_CHECKLIST.md` BL-01 for the full diagnosis and
+> `scripts/preflight.py` `check_6_platform_pinned` for the guard.
 
 The YAML lives in `firmware/livingroom.yaml`. Copy `firmware/secrets.yaml.example` to `firmware/secrets.yaml` and fill in Wi-Fi + openHAB `api:` encryption key before flashing.
 
 ```bash
 cd firmware
+# first time, or after a toolchain change:
+../scripts/clean.sh
+# every time, before flashing:
+../scripts/preflight.py
 esphome run livingroom.yaml     # first flash via USB
-esphome run livingroom.yaml      # later: OTA after Wi-Fi is up
+esphome run livingroom.yaml     # later: OTA after Wi-Fi is up
 ```
 
 The custom component `components/ld2420_energy/` adds the 16 gate-energy sensors. It hooks into the upstream `LD2420Component` through the `LD2420Listener::on_energy()` interface that the parent already calls on every parsed energy frame (Normal mode, firmware ≥ v1.5.4, ~10 Hz). **No upstream fork is required.**
@@ -147,15 +161,19 @@ For best results with a 6 m room on wall mounting:
 │   └── secrets.yaml.example      Template — copy to secrets.yaml and fill in
 ├── components/ld2420_energy/     Local ESPHome component: 16 gate-energy sensors
 │   ├── __init__.py
-│   ├── sensor.py
-│   └── sensor.h
+│   ├── sensor.py                 Binds the listener to the upstream LD2420Component
+│   ├── sensor.h                  C++ listener (overrides LD2420Listener::on_energy)
+│   └── sensor.cpp
 ├── docs/
 │   ├── openhab.md                Detailed openHAB thing / item / rules examples
 │   ├── hardware.md               Wiring diagram, photos, BOM
 │   └── protocol.md               LD2420 UART frame reference (V2.x protocol)
 ├── scripts/
+│   ├── clean.sh                  Wipe the toolchain cache so a stale
+│   │                             toolchain-xtensa@3.x cannot leak into the next build
 │   ├── new_node.sh               Clone livingroom.yaml for a 2nd / 3rd / 4th node
 │   └── preflight.py              Smoke-check before `esphome run` (pinned versions, syntax)
+├── RELEASE_CHECKLIST.md          R1B Backlog, build env snapshot, pre-release gate
 ├── .github/workflows/
 │   └── lint.yaml                 yaml-lint on PR
 ├── LICENSE                       MIT

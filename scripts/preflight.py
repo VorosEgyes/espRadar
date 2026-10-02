@@ -82,12 +82,53 @@ def check_5_component_files() -> None:
         fail(f"components/ld2420_energy/ missing: {missing}")
 
 
+def check_6_platform_pinned() -> None:
+    """Guard the platform_version pin that keeps the gcc 5.2 toolchain.
+
+    ESPHome 2025.11+ generates a default platformio.ini that pulls
+    espressif8266@4.2.1 → toolchain-xtensa@3.x (gcc 10.3.0), whose
+    libstdc++ headers are inconsistent with -std=gnu++20 and produce
+    the "'std::size_t' has not been declared" cascade. The 2.6.3
+    pin pulls the gcc 5.2 toolchain where the same code builds.
+    """
+    text = MAIN_YAML.read_text(encoding="utf-8")
+    if "platform_version: 2.6.3" not in text:
+        fail(
+            "firmware/livingroom.yaml is missing `platform_version: 2.6.3` "
+            "under the `esp8266:` block. Without it, the next build will "
+            "pull espressif8266@4.2.1 + toolchain-xtensa@3.x and the "
+            "std::size_t cascade returns. See scripts/clean.sh + the "
+            "comment in firmware/livingroom.yaml."
+        )
+
+
+def check_7_register_listener() -> None:
+    """Guard the Python binding against the add_listener() typo.
+
+    The upstream LD2420Component exposes `register_listener(...)` (since
+    2023-11 merge, stable through 2026.9.1). The old `add_listener` name
+    is a build-breaking typo that compiles to a non-existent method call.
+    """
+    py = COMPONENT / "sensor.py"
+    if not py.exists():
+        return
+    text = py.read_text(encoding="utf-8")
+    if "hub.add_listener(" in text or "cg.add(hub.add_listener(" in text:
+        fail(
+            f"{py} still calls `hub.add_listener(...)` — the upstream "
+            "LD2420Component method is `register_listener` (verified "
+            "against esphome@2026.9.1 esphome/components/ld2420/ld2420.h:102)."
+        )
+
+
 def main() -> int:
     check_1_secrets()
     check_2_no_placeholders()
     check_3_yaml_parses()
     check_4_gate_keys()
     check_5_component_files()
+    check_6_platform_pinned()
+    check_7_register_listener()
     print("PRE-FLIGHT OK")
     return 0
 

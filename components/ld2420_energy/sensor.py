@@ -58,7 +58,12 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     hub = await cg.get_variable(config[CONF_LD2420_ID])
-    cg.add(hub.add_listener(var))
+    # Upstream LD2420Component exposes `register_listener` (not `add_listener`)
+    # since ld2420 was merged into ESPHome core in 2023-11. The method name
+    # was stable through 2026.9.1. Verified against
+    # esphome/esphome@2026.9.1 esphome/components/ld2420/ld2420.h:102
+    # (`void register_listener(LD2420Listener *listener) { ... }`).
+    cg.add(hub.register_listener(var))
 
     for i, key in enumerate(CONF_GATE_ENERGY_KEYS):
         if key in config:
