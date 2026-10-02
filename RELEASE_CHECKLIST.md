@@ -180,14 +180,42 @@ Run before any version bump / tag / GitHub release:
 
 ---
 
-## Build environment snapshot (2026-10-02, the first successful build)
+## Build environment snapshot
 
-| Component | Version |
+### First successful build (2026-10-02 23:48:24 +0200)
+
+This is the **first build of the espRadar project**. The firmware
+is the binary referenced by the eventual `v1.0.0` release tag
+(once Miklós approves the release gate).
+
+| Component | Value |
 |---|---|
 | ESPHome | 2026.9.1 |
 | platformio/espressif8266 | 4.2.1 (default; BL-01's `2.6.3` pin is structurally incompatible, see BL-01a) |
-| toolchain-xtensa | 3.x (gcc 10.3.0; see BL-01b for the `<cstddef>` workaround) |
+| toolchain-xtensa | 3.x (gcc 10.3.0; see BL-01b for the `<stddef.h>` workaround) |
 | framework-arduinoespressif8266 | 3.1.2 (recommended) |
 | LD2420 firmware (target) | ≥ v1.5.4 |
 | Python | 3.14 (macOS preflight) |
 | Host | macOS (MacBook Air, modmj) |
+| D1 mini (target) | ESP8266EX, 80MHz, 4MB flash, MAC f4:cf:a2:d8:18:e4 |
+| USB port | /dev/cu.usbserial-1130 (CH340 USB2.0-Ser!) |
+| esptool | 5.3.1 (Stub flasher) |
+| Flash baud | 460800 |
+
+| Build artifact | Value |
+|---|---|
+| `config_hash` | 0xFED1A364 (4275151716) |
+| `build_time_str` | 2026-10-02 23:48:24 +0200 |
+| `firmware.bin` size | 472496 bytes (464 KB) |
+| `firmware.bin` SHA-256 | `fb0ea4f06ddc406ce41632df86615962bbf2df0f50d0466072a4f7e537398d3c` |
+| RAM usage | 36924 / 81920 bytes (45.1%) |
+| Flash usage | 468349 / 1044464 bytes (44.8%) |
+| Link time | 125.20 s (full clean build) |
+| Upload time | 9.2 s at 412.6 kbit/s (compressed 338625 / 472496) |
+| Flash erase range | 0x00000000 → 0x00073fff |
+| `firmware.elf` | `firmware/.esphome/build/livingroom/.pioenvs/livingroom/firmware.elf` |
+
+**Reference for OTA verification.** The SHA-256 of the
+`firmware.bin` is the canonical fingerprint of this build. Any
+OTA update payload should match this hash (or the corresponding
+hash of a later tagged release) byte-for-byte.
