@@ -31,10 +31,17 @@ does not exhibit the bug.
 ```yaml
 esp8266:
   board: d1_mini
-  platform_version: 2.6.3
   framework:
     version: recommended
+    platform_version: 2.6.3
 ```
+
+> ⚠️ The `platform_version` key lives under `framework:` in the
+> ESPHome 2026.9.1 esp8266 schema. Putting it directly under
+> `esp8266:` is rejected with
+> "[platform_version] is an invalid option for [esp8266]".
+> Verified against `esphome/esphome@2026.9.1
+> esphome/components/esp8266/__init__.py:_arduino_check_versions`.
 
 **Why we cannot just upgrade the toolchain.** ESPHome 2025.11+ does
 not support any espressif8266 ≥ 3.x without `-std=gnu++20`, and the

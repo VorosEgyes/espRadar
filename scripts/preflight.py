@@ -90,15 +90,20 @@ def check_6_platform_pinned() -> None:
     libstdc++ headers are inconsistent with -std=gnu++20 and produce
     the "'std::size_t' has not been declared" cascade. The 2.6.3
     pin pulls the gcc 5.2 toolchain where the same code builds.
+
+    In ESPHome 2026.9.1 the `platform_version` key lives under the
+    `framework:` block of `esp8266:`, NOT directly under `esp8266:`.
+    Putting it at the wrong level is rejected with
+    "[platform_version] is an invalid option for [esp8266]".
     """
     text = MAIN_YAML.read_text(encoding="utf-8")
     if "platform_version: 2.6.3" not in text:
         fail(
             "firmware/livingroom.yaml is missing `platform_version: 2.6.3` "
-            "under the `esp8266:` block. Without it, the next build will "
-            "pull espressif8266@4.2.1 + toolchain-xtensa@3.x and the "
-            "std::size_t cascade returns. See scripts/clean.sh + the "
-            "comment in firmware/livingroom.yaml."
+            "under the `esp8266.framework:` block. Without it, the next "
+            "build will pull espressif8266@4.2.1 + toolchain-xtensa@3.x "
+            "and the std::size_t cascade returns. See scripts/clean.sh + "
+            "the comment in firmware/livingroom.yaml."
         )
 
 

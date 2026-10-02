@@ -24,22 +24,29 @@ esphome:
 
 esp8266:
   board: d1_mini
-  # Pin the espressif8266 platform to 2.6.3 (last release with the gcc 5.2
-  # toolchain). 4.x pulls toolchain-xtensa@3.x (gcc 10.3.0) whose
-  # libstdc++ headers are inconsistent with C++20 in -std=gnu++20 mode
-  # (esphome 2026.9.1 builds with gnu++20 by default). The error
-  # surfaces as "'std::size_t' has not been declared" cascades in
-  # <hashtable_policy.h> / <tuple> when the upstream ESPHome
-  # `ld2420` component pulls in <functional> via component.h. The
-  # ld2420_energy component itself never includes <functional>, so
-  # the error is not in our code.
-  #
-  # If ESPHome eventually requires espressif8266 >= 4.x, the workarounds
-  # are: (a) override the c++ standard in the build_flags above to
-  # -std=gnu++17, or (b) wait for an upstream toolchain-xtensa fix.
-  platform_version: 2.6.3
   framework:
     version: recommended
+    # Pin the espressif8266 platform to 2.6.3 (last release with the gcc 5.2
+    # toolchain). 4.x pulls toolchain-xtensa@3.x (gcc 10.3.0) whose
+    # libstdc++ headers are inconsistent with C++20 in -std=gnu++20 mode
+    # (esphome 2026.9.1 builds with gnu++20 by default). The error
+    # surfaces as "'std::size_t' has not been declared" cascades in
+    # <hashtable_policy.h> / <tuple> when the upstream ESPHome
+    # `ld2420` component pulls in <functional> via component.h. The
+    # ld2420_energy component itself never includes <functional>, so
+    # the error is not in our code.
+    #
+    # If ESPHome eventually requires espressif8266 >= 4.x, the workarounds
+    # are: (a) override the c++ standard in the build_flags above to
+    # -std=gnu++17, or (b) wait for an upstream toolchain-xtensa fix.
+    #
+    # NB: `platform_version` lives under `framework:` in the ESPHome 2026.9.1
+    # esp8266 schema, not at the esp8266: block level. Earlier attempts to
+    # put it directly under esp8266: were rejected with
+    # "[platform_version] is an invalid option for [esp8266]". The preflight
+    # check_6_platform_pinned matches the new placement
+    # (`platform_version: 2.6.3`).
+    platform_version: 2.6.3
 
 logger:
   level: INFO
