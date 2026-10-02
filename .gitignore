@@ -1,0 +1,25 @@
+# OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.venv-*/
+
+# Secrets and local build artefacts — must NEVER be committed.
+firmware/secrets.yaml
+firmware/secrets.yaml.bak
+firmware/*.bin
+firmware/*.elf
+firmware/.esphome/
+**/.esphome/
+
+# ESPHome dashboard / build caches
+.esphome/
+config/.esphome/

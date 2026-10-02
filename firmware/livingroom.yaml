@@ -1,0 +1,185 @@
+substitutions:
+  device_name: livingroom
+  friendly_name: Livingroom presence
+  # Logs on UART0 — must be 0 because D7/D8 (GPIO13/15) is the LD2420 UART.
+  log_baud: "0"
+  # LD2420 firmware ≥ v1.5.3 uses 115200 baud.
+  ld2420_baud: "115200"
+  # 6 m room on wall mount → 9 gates (≈ 6.3 m physical).
+  max_gate: "9"
+  # 30 s of stillness before the radar declares "no target".
+  presence_timeout: "30s"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.11.0
+  on_boot:
+    priority: 600
+    then:
+      - logger.log:
+          level: INFO
+          format: "ESPHome booted — LD2420 will report presence on openHAB object"
+          tag: ld2420
+
+esp8266:
+  board: d1_mini
+  framework:
+    version: recommended
+
+logger:
+  level: INFO
+  baud_rate: ${log_baud}
+
+# Native API for openHAB via seime/openhab-esphome binding.
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 15min
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  fast_connect: true
+  reboot_timeout: 5min
+  # DHCP — host reservation by MAC on the router is the recommended way to
+  # give each node a stable IP. See README → "Network setup".
+  ap:
+    ssid: "${friendly_name} Fallback Hotspot"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+web_server:
+  port: 80
+
+# Local component that exposes per-gate energy as 16 sensors.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ld2420_energy]
+
+# Hardware UART on D7/D8 (GPIO13/GPIO15) — kept off UART0.
+uart:
+  id: ld2420_uart
+  tx_pin: GPIO15
+  rx_pin: GPIO13
+  baud_rate: ${ld2420_baud}
+  parity: NONE
+  stop_bits: 1
+
+# Upstream LD2420 component — merged into ESPHome since 2023-11.
+# The id is referenced from the ld2420_energy platform below.
+ld2420:
+  id: ld2420_hub
+  max_gate_distance: ${max_gate}
+  min_gate_distance: 0
+  presence_timeout: ${presence_timeout}
+
+binary_sensor:
+  - platform: ld2420
+    has_target:
+      name: Presence
+      device_class: occupancy
+      # Hysteresis: stay on for 5 s after the radar goes quiet, regardless of
+      # presence_timeout above. Helps with still-presence dropouts.
+      filters:
+        - delayed_off: 5s
+
+sensor:
+  - platform: ld2420
+    moving_distance:
+      name: Moving distance
+      unit_of_measurement: cm
+      accuracy_decimals: 1
+      filters:
+        - clamp:
+            min_value: 0
+            max_value: 800
+            ignore_out_of_range: true
+  - platform: ld2420_energy
+    ld2420_id: ld2420_hub
+    gate_energy_0:
+      name: Gate 0 energy
+    gate_energy_1:
+      name: Gate 1 energy
+    gate_energy_2:
+      name: Gate 2 energy
+    gate_energy_3:
+      name: Gate 3 energy
+    gate_energy_4:
+      name: Gate 4 energy
+    gate_energy_5:
+      name: Gate 5 energy
+    gate_energy_6:
+      name: Gate 6 energy
+    gate_energy_7:
+      name: Gate 7 energy
+    gate_energy_8:
+      name: Gate 8 energy
+    gate_energy_9:
+      name: Gate 9 energy
+    gate_energy_10:
+      name: Gate 10 energy
+    gate_energy_11:
+      name: Gate 11 energy
+    gate_energy_12:
+      name: Gate 12 energy
+    gate_energy_13:
+      name: Gate 13 energy
+    gate_energy_14:
+      name: Gate 14 energy
+    gate_energy_15:
+      name: Gate 15 energy
+
+text_sensor:
+  - platform: ld2420
+    fw_version:
+      name: Firmware version
+
+# Diagnostic LEDs: built-in LED shows presence, external LED flashes on each frame.
+ledc:
+  pin: LED_BUILTIN
+  frequency: 1000 Hz
+
+switch:
+  - platform: restart
+    name: Restart
+
+# Tuning UI surfaces — every entity ends up in openHAB through the ESPHome binding.
+select:
+  - platform: ld2420
+    operating_mode:
+      name: Operating mode
+
+number:
+  - platform: ld2420
+    presence_timeout:
+      name: Presence timeout
+    min_gate_distance:
+      name: Min gate distance
+    max_gate_distance:
+      name: Max gate distance
+    gate_select:
+      name: Gate to set
+    still_threshold:
+      name: Still threshold
+    move_threshold:
+      name: Move threshold
+
+button:
+  - platform: ld2420
+    apply_config:
+      name: Apply config
+    factory_reset:
+      name: Factory reset
+    restart_module:
+      name: Restart module
+    revert_config:
+      name: Revert edits
