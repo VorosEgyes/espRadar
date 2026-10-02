@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clone livingroom.yaml into a new node config and substitute the device name
+# Clone radar.yaml into a new node config and substitute the device name
 # and friendly name. Edit the resulting file before flashing.
 #
 # Usage: scripts/new_node.sh <name>
@@ -18,7 +18,7 @@ fi
 
 NAME="$1"
 
-SRC="firmware/livingroom.yaml"
+SRC="firmware/radar.yaml"
 DST="firmware/${NAME}.yaml"
 
 if [[ ! -f "${SRC}" ]]; then
@@ -34,9 +34,9 @@ fi
 TITLE_NAME="$(tr '[:lower:]' '[:upper:]' <<< "${NAME:0:1}")${NAME:1}"
 
 sed \
-    -e "s|^  device_name: livingroom$|  device_name: ${NAME}|" \
-    -e "s|^  friendly_name: Livingroom presence$|  friendly_name: ${TITLE_NAME} presence|" \
-    -e "s|^      name: Livingroom presence$|      name: ${TITLE_NAME} presence|" \
+    -e "s|^  device_name: radar$|  device_name: ${NAME}|" \
+    -e "s|^  friendly_name: Radar presence$|  friendly_name: ${TITLE_NAME} presence|" \
+    -e "s|^      name: Radar presence$|      name: ${TITLE_NAME} presence|" \
     "${SRC}" > "${DST}"
 
 echo "Created ${DST}. Edit it, then:"

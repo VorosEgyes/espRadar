@@ -92,7 +92,7 @@ git pull origin main
 ./scripts/clean.sh
 ./scripts/preflight.py   # must print "PRE-FLIGHT OK"
 cd firmware
-esphome run livingroom.yaml
+esphome run radar.yaml
 # Pick the USB option at the "Found multiple options" prompt
 ```
 
@@ -120,8 +120,8 @@ firmware) — see the `## Network setup` section of README.md.
 cd ~/dev/espRadar
 git checkout v1.0.0 -- firmware/livingroom.yaml
 cd firmware
-esphome run livingroom.yaml
-git checkout main -- firmware/livingroom.yaml   # restore v1.1.0 YAML for the next node
+esphome run radar.yaml
+git checkout main -- firmware/radar.yaml   # restore v1.1.0 YAML for the next node
 ```
 
 The `components/ld2420_energy/` directory is kept in the repo
@@ -146,7 +146,7 @@ expects it to be loaded via `external_components:`.
 
 1. `scripts/preflight.py` → must print `PRE-FLIGHT OK` (checks 1–7).
 2. `scripts/clean.sh` (without `--all`) → nukes the toolchain cache.
-3. `cd firmware && esphome run livingroom.yaml` → must reach `[SUCCESS]`.
+3. `cd firmware && esphome run radar.yaml` → must reach `[SUCCESS]`.
 4. `scripts/preflight.py check_4_ld2410_yaml` → confirms the YAML
    is a v1.1.0 LD2410 config (not v1.0.0 LD2420).
 5. Tag only after a SUCCESS build with the new toolchain (no leftover
@@ -165,7 +165,7 @@ and has no toolchain surprises.
 - LED diagnostics removed — LEDC is no longer a YAML section in
   ESPHome 2025.11+ (lives on `output:` platform now). Presence
   state is exposed via openHAB, so an on-board LED is not needed.
-- `external_components` path duplication (firmware/livingroom.yaml
+- `external_components` path duplication (firmware/radar.yaml
   uses `path: components` instead of `path: ../components`).
   Currently option 2 (de-facto behaviour: `clean.sh` wipes the
   build cache which transitively includes the copied component)
@@ -186,23 +186,23 @@ and has no toolchain surprises.
 ## v1.1.0-ready openHAB sitemap draft
 
 ```sitemap
-sitemap presence label="Living room presence" {
+sitemap radar label="Radar presence" {
     Frame label="State" {
-        Switch item=Presence_HasTarget label="Occupied"
-        Text    item=Presence_MovingDistance
-        Text    item=Presence_StillDistance
-        Text    item=Presence_DetectionDistance
-        Text    item=Presence_MovingEnergy
-        Text    item=Presence_StillEnergy
-        Text    item=Presence_FwVersion
-        Text    item=Presence_LD2410MAC
+        Switch item=Radar_HasTarget label="Occupied"
+        Text    item=Radar_MovingDistance
+        Text    item=Radar_StillDistance
+        Text    item=Radar_DetectionDistance
+        Text    item=Radar_MovingEnergy
+        Text    item=Radar_StillEnergy
+        Text    item=Radar_FwVersion
+        Text    item=Radar_LD2410MAC
     }
     Frame label="Tuning" {
-        Switch item=Presence_EngineeringMode
-        Setpoint item=Presence_NoneDuration minValue=0 maxValue=32767 step=1
-        Setpoint item=Presence_MaxMoveDistanceGate minValue=2 maxValue=8 step=1
-        Setpoint item=Presence_MaxStillDistanceGate minValue=2 maxValue=8 step=1
-        Selection item=Presence_DistanceResolution mappings=["0.75m"="0.75m","0.2m"="0.2m"]
+        Switch item=Radar_EngineeringMode
+        Setpoint item=Radar_NoneDuration minValue=0 maxValue=32767 step=1
+        Setpoint item=Radar_MaxMoveDistanceGate minValue=2 maxValue=8 step=1
+        Setpoint item=Radar_MaxStillDistanceGate minValue=2 maxValue=8 step=1
+        Selection item=Radar_DistanceResolution mappings=["0.75m"="0.75m","0.2m"="0.2m"]
     }
 }
 ```

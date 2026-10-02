@@ -7,9 +7,11 @@ wired into CI later.
 Checks:
   1. firmware/secrets.yaml exists (not the .example).
   2. secrets.yaml has no `PASTE_BASE64_32BYTE_HERE=` placeholders left in.
-  3. firmware/livingroom.yaml parses as YAML.
-  4. The 16 gate_energy_N keys are present in the YAML.
-  5. components/ld2420_energy/ contains all three source files.
+  3. firmware/radar.yaml parses as YAML.
+  4. firmware/radar.yaml is a v1.1.0 LD2410 config
+     (`check_4_ld2410_yaml`).
+  5. components/ld2420_energy/ contains all four source files
+     (v1.0.0 archive — kept on disk for the LD2420 firmware).
 """
 from __future__ import annotations
 
@@ -35,7 +37,7 @@ _SecretLoader.add_constructor(
 REPO = Path(__file__).resolve().parent.parent
 FIRMWARE = REPO / "firmware"
 SECRETS = FIRMWARE / "secrets.yaml"
-MAIN_YAML = FIRMWARE / "livingroom.yaml"
+MAIN_YAML = FIRMWARE / "radar.yaml"
 COMPONENT = REPO / "components" / "ld2420_energy"
 
 
@@ -65,7 +67,7 @@ def check_3_yaml_parses() -> None:
     try:
         yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)
     except yaml.YAMLError as e:
-        fail(f"firmware/livingroom.yaml does not parse: {e}")
+        fail(f"firmware/radar.yaml does not parse: {e}")
 
 
 def _strip_yaml_comments(text: str) -> str:
@@ -104,7 +106,7 @@ def _strip_yaml_comments(text: str) -> str:
 def check_4_ld2410_yaml() -> None:
     """Guard the v1.1.0 LD2410 configuration.
 
-    Verifies that the v1.1.0 firmware/livingroom.yaml targets the
+    Verifies that the v1.1.0 firmware/radar.yaml targets the
     LD2410 sensor (not the v1.0.0 LD2420). The check is named
     `check_4_ld2410_yaml` (replaces the old `check_4_gate_keys`
     that asserted 16 `gate_energy_N:` keys for the LD2420 build).
@@ -208,7 +210,7 @@ def check_4_ld2410_yaml() -> None:
     if failures:
         joined = "; ".join(failures)
         fail(
-            f"firmware/livingroom.yaml is not a valid v1.1.0 LD2410 "
+            f"firmware/radar.yaml is not a valid v1.1.0 LD2410 "
             f"config. {joined}. See the v1.0.0 firmware tag and the "
             f"docs/RELEASE_NOTES_v1.0.0.md for the LD2420 layout, or "
             f"the docs/RELEASE_NOTES_v1.1.0.md draft for the LD2410 "
@@ -252,7 +254,7 @@ def check_6_cstddef_workaround() -> None:
     been C++-only and would have failed on the .c files in
     ESPAsyncTCP / noise-c with "cstddef: No such file or
     directory" (first caught on
-    .pioenvs/livingroom/libe9a/ESPAsyncTCP/tcp_axtls.c).
+    .pioenvs/radar/libe9a/ESPAsyncTCP/tcp_axtls.c).
 
     If the flag is ever removed, the build dies with the same
     "std::size_t has not been declared" cascade that the original
@@ -262,7 +264,7 @@ def check_6_cstddef_workaround() -> None:
     text = MAIN_YAML.read_text(encoding="utf-8")
     if "-include stddef.h" not in text:
         fail(
-            "firmware/livingroom.yaml is missing the BL-01b toolchain-xtensa@3.x "
+            "firmware/radar.yaml is missing the BL-01b toolchain-xtensa@3.x "
             "workaround. The `esphome:` block must set "
             "`platformio_options.build_flags: [-include stddef.h]` to keep "
             "`std::size_t` / `std::ptrdiff_t` in scope before any toolchain "
@@ -272,7 +274,7 @@ def check_6_cstddef_workaround() -> None:
             "with the 'std::size_t has not been declared' cascade in "
             "<hashtable_policy.h> and <tuple>, or — if `cstddef` is used — "
             "with 'cstddef: No such file or directory' on the .c files. "
-            "See the long comment in firmware/livingroom.yaml and "
+            "See the long comment in firmware/radar.yaml and "
             "RELEASE_CHECKLIST.md BL-01b."
         )
 
@@ -309,19 +311,19 @@ def check_6b_platformio_options_structure() -> None:
     try:
         cfg = yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)
     except yaml.YAMLError as e:
-        fail(f"firmware/livingroom.yaml does not parse: {e}")
+        fail(f"firmware/radar.yaml does not parse: {e}")
 
     if cfg is None:
-        fail("firmware/livingroom.yaml is empty or null after parsing.")
+        fail("firmware/radar.yaml is empty or null after parsing.")
 
     esphome = cfg.get("esphome") if isinstance(cfg, dict) else None
     if not isinstance(esphome, dict):
-        fail("firmware/livingroom.yaml is missing the top-level `esphome:` mapping.")
+        fail("firmware/radar.yaml is missing the top-level `esphome:` mapping.")
 
     pio_opts = esphome.get("platformio_options") if isinstance(esphome, dict) else None
     if not isinstance(pio_opts, dict):
         fail(
-            "firmware/livingroom.yaml is missing "
+            "firmware/radar.yaml is missing "
             "`esphome.platformio_options:` (a mapping). The BL-01b workaround "
             "must be a `platformio_options.build_flags:` list, not a string."
         )

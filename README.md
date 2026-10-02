@@ -68,7 +68,7 @@ Built with **ESPHome 2026.9.1** (the upstream `ld2420` component has been merged
 > dies with `'std::size_t' has not been declared` cascading
 > through `<hashtable_policy.h>` and `<tuple>`.
 >
-> The fix is a single flag in `firmware/livingroom.yaml`:
+> The fix is a single flag in `firmware/radar.yaml`:
 >
 > ```yaml
 > esphome:
@@ -93,7 +93,7 @@ Built with **ESPHome 2026.9.1** (the upstream `ld2420` component has been merged
 > structurally incompatible with the current ESPHome because
 > the gcc 5.2 toolchain cannot compile C++20).
 
-The YAML lives in `firmware/livingroom.yaml`. Copy `firmware/secrets.yaml.example` to `firmware/secrets.yaml` and fill in Wi-Fi + openHAB `api:` encryption key before flashing.
+The YAML lives in `firmware/radar.yaml`. Copy `firmware/secrets.yaml.example` to `firmware/secrets.yaml` and fill in Wi-Fi + openHAB `api:` encryption key before flashing.
 
 ```bash
 cd firmware
@@ -101,8 +101,8 @@ cd firmware
 ../scripts/clean.sh
 # every time, before flashing:
 ../scripts/preflight.py
-esphome run livingroom.yaml     # first flash via USB
-esphome run livingroom.yaml     # later: OTA after Wi-Fi is up
+esphome run radar.yaml     # first flash via USB
+esphome run radar.yaml     # later: OTA after Wi-Fi is up
 ```
 
 The custom component `components/ld2420_energy/` adds the 16 gate-energy sensors. It hooks into the upstream `LD2420Component` through the `LD2420Listener::on_energy()` interface that the parent already calls on every parsed energy frame (Normal mode, firmware ≥ v1.5.4, ~10 Hz). **No upstream fork is required.**
@@ -126,7 +126,7 @@ openhab> bundle:install https://github.com/seime/openhab-esphome/releases/downlo
 
 ### 2. Discover the device
 
-The binding discovers the ESPHome node over mDNS as `livingroom.local` (or whatever `name:` you set in the YAML). You will see it appear in **Settings → Things → Inbox** within a few seconds. Add it, paste the `api.encryption.key` from `firmware/secrets.yaml` into the Thing configuration.
+The binding discovers the ESPHome node over mDNS as `radar.local` (or whatever `name:` you set in the YAML). You will see it appear in **Settings → Things → Inbox** within a few seconds. Add it, paste the `api.encryption.key` from `firmware/secrets.yaml` into the Thing configuration.
 
 The Thing auto-creates the following Channels:
 
@@ -142,26 +142,43 @@ The Thing auto-creates the following Channels:
 
 ### 3. Items & Sitemap (minimal example)
 
+The v1.1.0 LD2410 firmware exposes the following entities (channels)
+through the `seime/openhab-esphome` binding. The full sitemap
+draft is in [`docs/RELEASE_NOTES_v1.1.0.md`](docs/RELEASE_NOTES_v1.1.0.md);
+a minimal example below.
+
 ```text
-// items/presence.items
-Number  Presence_MovingDistance   "Moving distance [%.1f cm]"  {channel="esphome:thing:livingroom:moving_distance"}
-Number  Presence_Gate0Energy      "Gate 0 energy [%.0f]"       {channel="esphome:thing:livingroom:gate_energy_0"}
-Contact Presence_HasTarget        "Room occupied [MAP(presence.map):%s]"  {channel="esphome:thing:livingroom:has_target"}
-String  Presence_FwVersion        "Firmware [%s]"              {channel="esphome:thing:livingroom:fw_version"}
+// items/radar.items
+Number  Radar_MovingDistance    "Moving distance [%.0f cm]"   {channel="esphome:thing:radar:moving_distance"}
+Number  Radar_StillDistance     "Still distance [%.0f cm]"    {channel="esphome:thing:radar:still_distance"}
+Number  Radar_DetectionDistance "Detection distance [%.0f cm]" {channel="esphome:thing:radar:detection_distance"}
+Number  Radar_MovingEnergy      "Moving energy [%.0f %%]"     {channel="esphome:thing:radar:moving_energy"}
+Number  Radar_StillEnergy       "Still energy [%.0f %%]"      {channel="esphome:thing:radar:still_energy"}
+Contact Radar_HasTarget         "Occupied [MAP(presence.map):%s]" {channel="esphome:thing:radar:has_target"}
+Contact Radar_HasMovingTarget   "Moving [MAP(motion.map):%s]" {channel="esphome:thing:radar:has_moving_target"}
+Contact Radar_HasStillTarget    "Still [MAP(presence.map):%s]"  {channel="esphome:thing:radar:has_still_target"}
+String  Radar_FwVersion         "Firmware [%s]"               {channel="esphome:thing:radar:fw_version"}
+String  Radar_LD2410MAC         "LD2410 MAC [%s]"             {channel="esphome:thing:radar:ld2410_mac"}
 ```
 
 ```text
-// sitemaps/presence.sitemap
-sitemap presence label="Living room presence" {
+// sitemaps/radar.sitemap
+sitemap radar label="Radar presence" {
     Frame label="State" {
-        Switch item=Presence_HasTarget label="Occupied"
-        Text    item=Presence_MovingDistance
-        Text    item=Presence_FwVersion
+        Switch item=Radar_HasTarget label="Occupied"
+        Text    item=Radar_MovingDistance
+        Text    item=Radar_StillDistance
+        Text    item=Radar_DetectionDistance
+        Text    item=Radar_MovingEnergy
+        Text    item=Radar_StillEnergy
+        Text    item=Radar_FwVersion
     }
     Frame label="Tuning" {
-        Setpoint item=Presence_PresenceTimeout minValue=5 maxValue=600 step=5
-        Setpoint item=Presence_MaxGateDistance minValue=1 maxValue=15 step=1
-        Selection item=Presence_OperatingMode mappings=["Normal"="Normal","Calibrate"="Calibrate","Simple"="Simple"]
+        Switch item=Radar_EngineeringMode
+        Setpoint item=Radar_NoneDuration minValue=0 maxValue=32767 step=1
+        Setpoint item=Radar_MaxMoveDistanceGate minValue=2 maxValue=8 step=1
+        Setpoint item=Radar_MaxStillDistanceGate minValue=2 maxValue=8 step=1
+        Selection item=Radar_DistanceResolution mappings=["0.75m"="0.75m","0.2m"="0.2m"]
     }
 }
 ```
@@ -170,14 +187,31 @@ sitemap presence label="Living room presence" {
 
 ## Calibration
 
-1. Set `operating_mode` to **Calibrate** through the openHAB Thing or the ESPHome device page.
-2. Leave the room empty for ≥ 30 s.
-3. Press the **apply_config** button. The LD2420 computes per-gate noise-floor thresholds and writes them to flash. It returns to Normal mode automatically.
+The v1.1.0 LD2410 firmware does its own auto-calibration: every
+`set_*` (timeout, max_move_distance_gate, per-gate move/still
+thresholds, etc.) is persisted to the LD2410 EEPROM
+automatically. There is no separate "Apply config" button.
 
-For best results with a 6 m room on wall mounting:
-- `max_gate_distance: 9` (≈ 6.3 m physical)
-- `min_gate_distance: 0`
-- `presence_timeout: 30s` is a reasonable default; raise it for still-presence reliability.
+1. Make sure `Engineering mode` is **ON** in the web UI (or
+   the `Radar_EngineeringMode` openHAB switch). It auto-disables
+   after 5 minutes per Hi-Link spec.
+2. Stand 1-1.5 m in front of the radar and read
+   `Radar_MovingEnergy` (web UI: `Moving energy`). It should
+   be 30-80%. If it stays < 10%, lower `Radar_Gate 0 move
+   threshold` from 50 to 20.
+3. Leave the room empty for ≥ 30 s, then read
+   `Radar_StillEnergy`. It should drop to 0-5%. If it stays
+   > 20%, the room is too noisy (HVAC, fans) — raise
+   `Radar_Gate 0 still threshold` from 0 to 30.
+
+For a typical 6 m × 4 m room on wall mounting:
+- `Max move distance gate: 8` (full range, ~6 m at 0.75 m resolution)
+- `Max still distance gate: 6` (still targets are within ~4.5 m)
+- `Distance resolution: 0.75m` (default; switch to `0.2m` only if you
+  need finer-grained gate readings, at the cost of shorter range)
+- `None duration: 5s` (Presence turns off 5 s after the last
+  detection; lower for faster off-response, higher for still-presence
+  reliability)
 
 ---
 
@@ -186,7 +220,7 @@ For best results with a 6 m room on wall mounting:
 ```
 .
 ├── firmware/
-│   ├── livingroom.yaml           ESPHome configuration for the D1 mini + LD2410
+│   ├── radar.yaml              ESPHome configuration for the D1 mini + LD2410
 │   └── secrets.yaml.example      Template — copy to secrets.yaml and fill in
 ├── components/ld2420_energy/     Local ESPHome component: 16 gate-energy sensors
 │   ├── __init__.py
@@ -200,7 +234,7 @@ For best results with a 6 m room on wall mounting:
 ├── scripts/
 │   ├── clean.sh                  Wipe the toolchain cache so a stale
 │   │                             toolchain-xtensa@3.x cannot leak into the next build
-│   ├── new_node.sh               Clone livingroom.yaml for a 2nd / 3rd / 4th node
+│   ├── new_node.sh               Clone radar.yaml for a 2nd / 3rd / 4th node
 │   └── preflight.py              Smoke-check before `esphome run` (pinned versions, syntax)
 ├── RELEASE_CHECKLIST.md          R1B Backlog, build env snapshot, pre-release gate
 ├── .github/workflows/

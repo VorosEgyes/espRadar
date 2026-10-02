@@ -165,7 +165,7 @@ see `docs/RELEASE_NOTES_v1.1.0.md`).
 
 **Docs updated.**
 
-- `firmware/livingroom.yaml`: long comment in `substitutions:`
+- `firmware/radar.yaml`: long comment in `substitutions:`
   explaining the 5V requirement and the silent-no-communication
   symptom on 3V3.
 - `README.md` Hardware section: wiring table shows
@@ -177,7 +177,7 @@ see `docs/RELEASE_NOTES_v1.1.0.md`).
   updated to 5V with BL-05 reference.
 
 **Long-term fix (tracker).** Add a `check_5_ld2410_supply_voltage`
-preflight check that reads the `firmware/livingroom.yaml`
+preflight check that reads the `firmware/radar.yaml`
 comment for the 5V marker. Not implemented yet because the
 preflight is YAML-side, not hardware-side — there is no way
 to detect a 3V3 wiring from the YAML alone. The `BL-05`
@@ -234,7 +234,7 @@ Run before any version bump / tag / GitHub release:
 
 1. `scripts/preflight.py` → must print `PRE-FLIGHT OK` (checks 1–7).
 2. `scripts/clean.sh` (without `--all`) → nukes the toolchain cache.
-3. `cd firmware && esphome run livingroom.yaml` → must reach `[SUCCESS]`.
+3. `cd firmware && esphome run radar.yaml` → must reach `[SUCCESS]`.
 4. If a new node was added: also `scripts/new_node.sh <name>` and run
    the new config through the same gate.
 5. Tag only after a SUCCESS build with the new toolchain (no leftover
@@ -244,14 +244,14 @@ Run before any version bump / tag / GitHub release:
 
 ## Known follow-ups (out of scope for R1)
 
-- **`external_components` path duplication** (firmware/livingroom.yaml
+- **`external_components` path duplication** (firmware/radar.yaml
   uses `path: components`, which is a path relative to the YAML file —
   i.e. `firmware/components/ld2420_energy/`. The ESPHome build copies
   the parent `components/` into that location, so the build cache ends
   up with a stale duplicate if the parent is edited but the build
   cache is not wiped. The two fixes (pick one):
   1. Change `path: components` to `path: ../components` in
-     firmware/livingroom.yaml. One-line change; breaks the current
+     firmware/radar.yaml. One-line change; breaks the current
      workflow where `firmware/components/` is checked in.
   2. Add `firmware/components/` to `firmware/.gitignore` and rely on
      `scripts/clean.sh` to wipe it. Less elegant but no behavioural

@@ -1,6 +1,6 @@
 substitutions:
-  device_name: livingroom
-  friendly_name: Livingroom presence
+  device_name: radar
+  friendly_name: Radar presence
   # Logs on UART0 — must be 0 because D7/D8 (GPIO13/15) is the LD2410 UART.
   log_baud: "0"
   # LD2410 out-of-the-box baud rate is 256000. Hardware UART required.
