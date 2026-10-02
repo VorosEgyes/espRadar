@@ -230,7 +230,7 @@ sensor:
 
 text_sensor:
   - platform: ld2410
-    fw_version:
+    version:
       name: Firmware version
   - platform: ld2410
     mac_address:

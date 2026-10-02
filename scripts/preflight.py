@@ -154,6 +154,20 @@ def check_4_ld2410_yaml() -> None:
             "no `has_target:` / `has_moving_target:` / `has_still_target:` "
             "binary sensor defined (LD2410 hub needs at least one)"
         )
+    # text_sensor: in ESPHome 2026.9.1 the LD2410 schema key is
+    # `version:` (CONF_VERSION), NOT `fw_version:`. The doksi
+    # page (esphome.io/components/sensor/ld2410/) still shows
+    # `fw_version:` which is misleading. Verified against
+    # esphome/esphome@2026.9.1 esphome/components/ld2410/text_sensor.py
+    if "fw_version" in text:
+        failures.append(
+            "the YAML still contains `fw_version` — the LD2410 "
+            "text_sensor schema key in ESPHome 2026.9.1 is `version:` "
+            "(verified against esphome@2026.9.1 "
+            "esphome/components/ld2410/text_sensor.py). The doksi "
+            "page (esphome.io) is out of date; the code is the source "
+            "of truth."
+        )
     if "ld2420:" in text or "platform: ld2420" in text:
         failures.append(
             "the YAML still contains `ld2420:` / `platform: ld2420` "
