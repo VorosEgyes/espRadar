@@ -47,7 +47,7 @@ block level. Putting it at the wrong level is rejected with
 against `esphome/esphome@2026.9.1
 esphome/components/esp8266/__init__.py`.
 
-### BL-01b — Pre-include `<cstddef>` for toolchain-xtensa@3.x (CLOSED 2026-10-02)
+### BL-01b — Pre-include `<stddef.h>` for toolchain-xtensa@3.x (CLOSED 2026-10-02 → revised 2026-10-02 to stddef.h)
 
 **Symptom.** With the BL-01 pin reverted, the default
 `espressif8266@4.2.1` + `toolchain-xtensa@3.x` (gcc 10.3.0) returns
@@ -60,30 +60,44 @@ early enough by ESPHome's `component.h` → `<functional>` include
 chain. The compiler then chokes on
 `std::size_t __bkt, std::size_t __bkt_count` in `hashtable_policy.h`.
 
-**Fix.** Force `<cstddef>` to be pre-included in every translation
-unit, via the `esphome.platformio_options.build_flags` key in
-`firmware/livingroom.yaml`:
+**First fix attempt (BL-01b v1, reverted).** Pre-include
+`<cstddef>` via `-include cstddef`. This works for the .cpp
+translation units but fails on the .c files in
+ESPAsyncTCP / noise-c:
+
+```
+cc1: fatal error: cstddef: No such file or directory
+compilation terminated.
+*** [.pioenvs/livingroom/libe9a/ESPAsyncTCP/tcp_axtls.c.o] Error 1
+```
+
+The C standard library does not ship `<cstddef>`; it ships
+`<stddef.h>`. The `-include` flag is global to the toolchain
+invocation and applies to both C and C++ TUs.
+
+**Final fix (BL-01b v2).** Pre-include `<stddef.h>` instead.
+`<stddef.h>` is valid in both C and C++ and (in C++) declares
+the same `size_t` / `ptrdiff_t` types in `std::` as well, so
+the `std::size_t` cascade never starts:
 
 ```yaml
 esphome:
   # ... other esphome: keys ...
   platformio_options:
     build_flags:
-      - -include cstddef
+      - -include stddef.h
 ```
 
-The `-include cstddef` flag makes gcc put `<cstddef>` at the very
-top of every `.cpp` file, before any toolchain header is parsed,
-so `std::size_t` / `std::ptrdiff_t` are always in scope.
-
 **Long-term fix (tracker).** File an issue against `esphome/core`
-to add `#include <cstddef>` to `esphome/core/component.h` (or the
-relevant shared header), so the workaround can be removed once
-upstream lands a fix.
+to add `#include <cstddef>` (or `#include <stddef.h>`) to
+`esphome/core/component.h` (or the relevant shared header), so
+the workaround can be removed once upstream lands a fix.
 
 **Validation.** `scripts/preflight.py` `check_6_cstddef_workaround`
-fails if the `-include cstddef` flag is ever removed from
-`firmware/livingroom.yaml`.
+(really checks for `-include stddef.h`; the name kept for
+provenance) plus `check_6b_platformio_options_structure` (PyYAML
+parse + structural check) fail if the flag is ever removed or
+if `cstddef` is substituted for `stddef.h`.
 
 ### BL-02 — Python binding: `register_listener` (not `add_listener`) (CLOSED 2026-10-02)
 

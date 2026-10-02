@@ -33,14 +33,23 @@ esphome:
   # is already in scope by the time they are first parsed, but
   # `<cstddef>` is not brought in early enough by ESPHome's
   # `component.h` → `<functional>` include chain. Pre-including
-  # `<cstddef>` via `-include cstddef` puts `std::size_t` /
-  # `std::ptrdiff_t` in scope before any toolchain header is parsed.
+  # `<stddef.h>` via `-include stddef.h` puts `std::size_t` /
+  # `std::ptrdiff_t` in scope before any toolchain header is
+  # parsed.
+  #
+  # NB: `-include stddef.h` (NOT `cstddef`). The toolchain also
+  # builds `.c` files (e.g. ESPAsyncTCP/tcp_axtls.c) which only
+  # have the C standard library available; `-include cstddef` would
+  # fail with "cstddef: No such file or directory" on those TUs.
+  # `<stddef.h>` is valid in both C and C++ and declares the same
+  # `size_t` / `ptrdiff_t` types in C++ (in `std::` as well).
   #
   # Pre-flight guard: scripts/preflight.py check_6 (renamed
-  # check_6_cstddef_workaround) verifies this flag is present.
+  # check_6_cstddef_workaround, but it really checks for
+  # `-include stddef.h`) verifies this flag is present.
   platformio_options:
     build_flags:
-      - -include cstddef
+      - -include stddef.h
   on_boot:
     priority: 600
     then:

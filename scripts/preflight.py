@@ -93,24 +93,35 @@ def check_6_cstddef_workaround() -> None:
     libstdc++10 <tuple> / <hashtable_policy.h> assume `std::size_t`
     is in scope by the time they are first parsed, which the
     ESPHome <functional> include chain does not guarantee. The
-    `-include cstddef` flag puts `std::size_t` in scope before
-    any toolchain header is parsed.
+    `-include stddef.h` flag puts `std::size_t` / `std::ptrdiff_t`
+    in scope before any toolchain header is parsed.
+
+    `stddef.h` is valid in both C and C++; `cstddef` would have
+    been C++-only and would have failed on the .c files in
+    ESPAsyncTCP / noise-c with "cstddef: No such file or
+    directory" (first caught on
+    .pioenvs/livingroom/libe9a/ESPAsyncTCP/tcp_axtls.c).
 
     If the flag is ever removed, the build dies with the same
     "std::size_t has not been declared" cascade that the original
-    BL-01 was trying to avoid.
+    BL-01 was trying to avoid. If `cstddef` is substituted for
+    `stddef.h`, the C TUs fail to compile.
     """
     text = MAIN_YAML.read_text(encoding="utf-8")
-    if "-include cstddef" not in text:
+    if "-include stddef.h" not in text:
         fail(
             "firmware/livingroom.yaml is missing the BL-01b toolchain-xtensa@3.x "
             "workaround. The `esphome:` block must set "
-            "`platformio_options.build_flags: [-include cstddef]` to keep "
+            "`platformio_options.build_flags: [-include stddef.h]` to keep "
             "`std::size_t` / `std::ptrdiff_t` in scope before any toolchain "
-            "header is parsed. Without it, the build dies with the "
-            "'std::size_t has not been declared' cascade in <hashtable_policy.h> "
-            "and <tuple>. See the long comment in firmware/livingroom.yaml "
-            "and RELEASE_CHECKLIST.md BL-01b."
+            "header is parsed. NB: use `stddef.h`, NOT `cstddef` — the "
+            "build also compiles .c files (ESPAsyncTCP/tcp_axtls.c) which "
+            "only have the C standard library. Without it, the build dies "
+            "with the 'std::size_t has not been declared' cascade in "
+            "<hashtable_policy.h> and <tuple>, or — if `cstddef` is used — "
+            "with 'cstddef: No such file or directory' on the .c files. "
+            "See the long comment in firmware/livingroom.yaml and "
+            "RELEASE_CHECKLIST.md BL-01b."
         )
 
 
@@ -121,13 +132,17 @@ def check_6b_platformio_options_structure() -> None:
     - the YAML parses,
     - the top-level `esphome:` block has a `platformio_options` mapping,
     - `platformio_options.build_flags` is a list (not a string),
-    - the list contains the literal "-include cstddef".
+    - the list contains the literal "-include stddef.h" (NOT cstddef).
 
     Catches the "looks right, but wrong YAML type" failure mode
-    where e.g. `build_flags: -include cstddef` (string, not list)
+    where e.g. `build_flags: -include stddef.h` (string, not list)
     passes the substring check in check_6 but is rejected by the
     ESPHome 2026.9.1 `esphome.config.CONFIG_SCHEMA` validator
     (`cv.Schema({cv.string_strict: cv.Any([cv.string], cv.string)})`).
+
+    Also catches the "cstddef vs stddef.h" failure mode that
+    would compile the .cpp translation units but fail on the .c
+    ones in ESPAsyncTCP / noise-c.
     """
     try:
         import yaml  # noqa: F401  (PyYAML is on the Mac where this runs)
@@ -163,16 +178,33 @@ def check_6b_platformio_options_structure() -> None:
     if not isinstance(build_flags, list):
         fail(
             "`esphome.platformio_options.build_flags` must be a YAML list "
-            "(`- -include cstddef`), not a scalar string. The ESPHome 2026.9.1 "
+            "(`- -include stddef.h`), not a scalar string. The ESPHome 2026.9.1 "
             "schema requires `dict[string, list[string] | str]` and a scalar "
             "is silently dropped at codegen time."
         )
 
-    if "-include cstddef" not in build_flags:
+    # Pyright cannot narrow `build_flags` from Any to list[str] through
+    # the isinstance check above, so it still sees `list[Unknown] | None`
+    # for the `in` / `not in` checks below. Re-assert the type to give
+    # both the type-checker and human readers a clear local assumption.
+    assert isinstance(build_flags, list)
+
+    if "-include stddef.h" not in build_flags:
         fail(
             "`esphome.platformio_options.build_flags` does not contain "
-            "`-include cstddef`. The BL-01b toolchain-xtensa@3.x workaround "
-            "must be in the list (alongside any other flags)."
+            "`-include stddef.h`. The BL-01b toolchain-xtensa@3.x workaround "
+            "must be in the list (alongside any other flags). NB: use "
+            "`stddef.h`, NOT `cstddef` — the .c TUs would fail."
+        )
+
+    if "-include cstddef" in build_flags:
+        fail(
+            "`esphome.platformio_options.build_flags` contains "
+            "`-include cstddef`. The build also compiles .c files "
+            "(e.g. ESPAsyncTCP/tcp_axtls.c) which only have the C "
+            "standard library; `cstddef` is C++-only and those TUs "
+            "would fail with 'cstddef: No such file or directory'. "
+            "Use `-include stddef.h` (valid in both C and C++)."
         )
 
 

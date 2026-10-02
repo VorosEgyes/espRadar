@@ -70,18 +70,24 @@ Built with **ESPHome 2026.9.1** (the upstream `ld2420` component has been merged
 > esphome:
 >   platformio_options:
 >     build_flags:
->       - -include cstddef
+>       - -include stddef.h
 > ```
 >
-> This pre-includes `<cstddef>` in every translation unit, so
+> This pre-includes `<stddef.h>` in every translation unit, so
 > `std::size_t` is in scope before any toolchain header is
-> parsed. `scripts/preflight.py` `check_6_cstddef_workaround`
-> guards against the flag ever being removed. See
-> `RELEASE_CHECKLIST.md` BL-01 / BL-01a / BL-01b for the full
-> diagnosis history (the earlier `espressif8266@2.6.3` pin from
-> BL-01 turned out to be structurally incompatible with the
-> current ESPHome because the gcc 5.2 toolchain cannot compile
-> C++20).
+> parsed. `stddef.h` (not `cstddef`!) because the toolchain
+> also builds `.c` files (e.g. ESPAsyncTCP/tcp_axtls.c) which
+> only have the C standard library; `cstddef` is C++-only and
+> those TUs would fail with
+> `cstddef: No such file or directory`. `scripts/preflight.py`
+> `check_6_cstddef_workaround` (the name keeps the BL-01b
+> provenance) plus `check_6b_platformio_options_structure`
+> guard against the flag ever being removed or `cstddef` being
+> substituted. See `RELEASE_CHECKLIST.md` BL-01 / BL-01a /
+> BL-01b for the full diagnosis history (the earlier
+> `espressif8266@2.6.3` pin from BL-01 turned out to be
+> structurally incompatible with the current ESPHome because
+> the gcc 5.2 toolchain cannot compile C++20).
 
 The YAML lives in `firmware/livingroom.yaml`. Copy `firmware/secrets.yaml.example` to `firmware/secrets.yaml` and fill in Wi-Fi + openHAB `api:` encryption key before flashing.
 
