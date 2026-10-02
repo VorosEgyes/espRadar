@@ -5,11 +5,10 @@ substitutions:
   log_baud: "0"
   # LD2420 firmware ≥ v1.5.3 uses 115200 baud.
   ld2420_baud: "115200"
-  # 6 m room on wall mount → 9 gates (≈ 6.3 m physical).
-  max_gate: "9"
-  # 30 s of stillness before the radar declares "no target".
-  # Note: this is in seconds (the upstream LD2420 number schema takes seconds).
-  presence_timeout_seconds: "30"
+  # Room-specific tuning (presence_timeout / min/max_gate_distance) is set
+  # after the first boot through openHAB and persisted via the
+  # "Apply config" button below. The substitutions here are only for
+  # platform-level constants.
 
 esphome:
   name: ${device_name}
@@ -160,16 +159,18 @@ select:
       name: Operating mode
 
 number:
+  # 2026 ESPHome ld2420 number schema does not accept `initial_value:` for
+  # presence_timeout / min_gate_distance / max_gate_distance — those keys
+  # default to firmware defaults (120 s, gate 1, gate 12). Set them once
+  # from openHAB after the first boot, then press the **Apply config**
+  # button below to persist the values into LD2420 EEPROM.
   - platform: ld2420
     presence_timeout:
       name: Presence timeout
-      initial_value: ${presence_timeout_seconds}
     min_gate_distance:
       name: Min gate distance
-      initial_value: 0
     max_gate_distance:
       name: Max gate distance
-      initial_value: ${max_gate}
     gate_select:
       name: Gate to set
     still_threshold:
