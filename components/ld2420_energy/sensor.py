@@ -36,6 +36,7 @@ def _validate(value):
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
+            cv.GenerateID(): cv.declare_id(LD2420EnergyListener),
             cv.Required(CONF_LD2420_ID): cv.use_id(LD2420Component),
             **{
                 cv.Optional(key): sensor.sensor_schema(
