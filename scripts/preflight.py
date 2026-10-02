@@ -168,6 +168,22 @@ def check_4_ld2410_yaml() -> None:
             "page (esphome.io) is out of date; the code is the source "
             "of truth."
         )
+    # button: in ESPHome 2026.9.1 the LD2410 button schema key
+    # is `query_params` (CONF_QUERY_PARAMS), NOT `query`. The
+    # doksi page (esphome.io) shows `query` which is misleading.
+    # Verified against esphome/esphome@2026.9.1
+    # esphome/components/ld2410/button/__init__.py.
+    if re.search(r"^  - platform: ld2410\s*$", text, re.MULTILINE):
+        # The LD2410 button block exists; verify the key.
+        # We look for the bare `query:` line at the right indent
+        # (4 spaces inside the button block).
+        if re.search(r"^    query:\s*$", text, re.MULTILINE):
+            failures.append(
+                "the LD2410 button block uses `query:` — the schema "
+                "key in ESPHome 2026.9.1 is `query_params:` (CONF_QUERY_PARAMS). "
+                "Verified against esphome@2026.9.1 "
+                "esphome/components/ld2410/button/__init__.py."
+            )
     if "ld2420:" in text or "platform: ld2420" in text:
         failures.append(
             "the YAML still contains `ld2420:` / `platform: ld2420` "

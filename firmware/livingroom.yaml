@@ -330,5 +330,10 @@ button:
       name: Restart module
     factory_reset:
       name: Factory reset
-    query:
+    query_params:
+      # In ESPHome 2026.9.1 the schema key is `query_params`
+      # (CONF_QUERY_PARAMS), NOT `query` (the doksi page shows
+      # `query` which is misleading). Verified against
+      # esphome/esphome@2026.9.1
+      # esphome/components/ld2410/button/__init__.py.
       name: Query current params

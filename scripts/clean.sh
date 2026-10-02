@@ -46,12 +46,5 @@ else
     echo "   (other packages like ESP8266WiFi, ESPAsyncTCP, etc. are kept)"
 fi
 
-echo ""
-echo "== Done. Next step: =="
-echo "   cd firmware && esphome run livingroom.yaml"
-echo ""
-echo "If the build dies with the 'std::size_t has not been declared' cascade,"
-echo "or with 'cstddef: No such file or directory' on a .c file, the BL-01b"
-echo "-include stddef.h workaround in firmware/livingroom.yaml is missing or"
-echo "has been replaced with `-include cstddef` — verify with:"
-echo "   grep -A1 platformio_options firmware/livingroom.yaml"
+echo "== Done =="
+echo "Next: cd firmware && esphome run livingroom.yaml"
