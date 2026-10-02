@@ -144,10 +144,10 @@ text_sensor:
     fw_version:
       name: Firmware version
 
-# Diagnostic LEDs: built-in LED shows presence, external LED flashes on each frame.
-ledc:
-  pin: LED_BUILTIN
-  frequency: 1000 Hz
+# (LED diagnostics removed — LEDC is no longer a YAML section in
+# ESPHome 2025.11+; it lives on the `output:` platform now. Presence
+# state is already exposed via openHAB, so an on-board LED is not
+# needed for this project.)
 
 switch:
   - platform: restart
