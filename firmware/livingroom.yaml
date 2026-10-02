@@ -38,8 +38,11 @@ api:
   reboot_timeout: 15min
 
 ota:
+  # The api.encryption.key above already authenticates uploaders.
+  # Adding a separate OTA password wastes 3.5 KB flash + 60 B RAM
+  # (warning from ESPHome 2026.9.1). Encrypting OTA requires only
+  # the api encryption key.
   - platform: esphome
-    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid

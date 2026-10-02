@@ -11,6 +11,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
 from esphome.const import (
+    CONF_ID,
     DEVICE_CLASS_SIGNAL_STRENGTH,  # 2025.11+; renamed from DEVICE_CLASS_SIGNAL
     STATE_CLASS_MEASUREMENT,
     UNIT_DECIBEL,
