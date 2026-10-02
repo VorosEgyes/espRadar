@@ -11,7 +11,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
 from esphome.const import (
-    DEVICE_CLASS_SIGNAL,
+    DEVICE_CLASS_SIGNAL_STRENGTH,  # 2025.11+; renamed from DEVICE_CLASS_SIGNAL
     STATE_CLASS_MEASUREMENT,
     UNIT_DECIBEL,
 )
@@ -40,7 +40,7 @@ CONFIG_SCHEMA = cv.All(
                 cv.Optional(key): sensor.sensor_schema(
                     unit_of_measurement=UNIT_DECIBEL,
                     accuracy_decimals=0,
-                    device_class=DEVICE_CLASS_SIGNAL,
+                    device_class=DEVICE_CLASS_SIGNAL_STRENGTH,
                     state_class=STATE_CLASS_MEASUREMENT,
                 )
                 for key in CONF_GATE_ENERGY_KEYS
