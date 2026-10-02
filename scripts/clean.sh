@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Wipe the ESPHome + PlatformIO caches so a stale toolchain (xtensa-lx106-elf
-# 3.x / gcc 10.3.0, paired with platformio/espressif8266@4.2.1) cannot be
-# picked up by a build that was started on the old toolchain.
+# Wipe the ESPHome + PlatformIO caches so a stale toolchain cannot be
+# picked up by a build that was started on an old toolchain.
 #
 # After this runs, the next `esphome run firmware/livingroom.yaml` will
 # re-download:
-#   - platformio/espressif8266@2.6.3    (pinned in livingroom.yaml)
-#   - toolchain-xtensa@~2.100100.0      (gcc 5.2 — no std::size_t cascade)
-#   - framework-arduinoespressif8266@~3.30102.0
+#   - platformio/espressif8266@4.2.1    (default; BL-01's 2.6.3 pin was
+#                                         structurally incompatible with
+#                                         ESPHome 2026.9.1, see BL-01a)
+#   - toolchain-xtensa@3.x              (gcc 10.3.0)
+#   - framework-arduinoespressif8266@3.1.2
 #
 # Run from the repo root:
 #   scripts/clean.sh
@@ -49,7 +50,7 @@ echo ""
 echo "== Done. Next step: =="
 echo "   cd firmware && esphome run livingroom.yaml"
 echo ""
-echo "If the next build still pulls gcc 10.3.0 (xtensa-lx106-elf@3.x), then"
-echo "the platform_version pin in firmware/livingroom.yaml is not being"
-echo "honoured — verify with:"
-echo "   grep platform_version firmware/livingroom.yaml"
+echo "If the build dies with the 'std::size_t has not been declared' cascade,"
+echo "the BL-01b -include cstddef workaround in firmware/livingroom.yaml"
+echo "is missing or has been removed — verify with:"
+echo "   grep -A1 platformio_options firmware/livingroom.yaml"

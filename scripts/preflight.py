@@ -82,28 +82,35 @@ def check_5_component_files() -> None:
         fail(f"components/ld2420_energy/ missing: {missing}")
 
 
-def check_6_platform_pinned() -> None:
-    """Guard the platform_version pin that keeps the gcc 5.2 toolchain.
+def check_6_cstddef_workaround() -> None:
+    """Guard the BL-01b toolchain-xtensa@3.x libstdc++ workaround.
 
-    ESPHome 2025.11+ generates a default platformio.ini that pulls
-    espressif8266@4.2.1 → toolchain-xtensa@3.x (gcc 10.3.0), whose
-    libstdc++ headers are inconsistent with -std=gnu++20 and produce
-    the "'std::size_t' has not been declared" cascade. The 2.6.3
-    pin pulls the gcc 5.2 toolchain where the same code builds.
+    ESPHome 2026.9.1 hard-codes `cg.set_cpp_standard("gnu++20")` and
+    rejects any framework < 3.0.0, so the toolchain pin from BL-01
+    (espressif8266@2.6.3, gcc 5.2) is structurally incompatible
+    with the current ESPHome. The default espressif8266@4.2.1 +
+    toolchain-xtensa@3.x (gcc 10.3.0) supports gnu++20 but its
+    libstdc++10 <tuple> / <hashtable_policy.h> assume `std::size_t`
+    is in scope by the time they are first parsed, which the
+    ESPHome <functional> include chain does not guarantee. The
+    `-include cstddef` flag puts `std::size_t` in scope before
+    any toolchain header is parsed.
 
-    In ESPHome 2026.9.1 the `platform_version` key lives under the
-    `framework:` block of `esp8266:`, NOT directly under `esp8266:`.
-    Putting it at the wrong level is rejected with
-    "[platform_version] is an invalid option for [esp8266]".
+    If the flag is ever removed, the build dies with the same
+    "std::size_t has not been declared" cascade that the original
+    BL-01 was trying to avoid.
     """
     text = MAIN_YAML.read_text(encoding="utf-8")
-    if "platform_version: 2.6.3" not in text:
+    if "-include cstddef" not in text:
         fail(
-            "firmware/livingroom.yaml is missing `platform_version: 2.6.3` "
-            "under the `esp8266.framework:` block. Without it, the next "
-            "build will pull espressif8266@4.2.1 + toolchain-xtensa@3.x "
-            "and the std::size_t cascade returns. See scripts/clean.sh + "
-            "the comment in firmware/livingroom.yaml."
+            "firmware/livingroom.yaml is missing the BL-01b toolchain-xtensa@3.x "
+            "workaround. The `esphome:` block must set "
+            "`platformio_options.build_flags: [-include cstddef]` to keep "
+            "`std::size_t` / `std::ptrdiff_t` in scope before any toolchain "
+            "header is parsed. Without it, the build dies with the "
+            "'std::size_t has not been declared' cascade in <hashtable_policy.h> "
+            "and <tuple>. See the long comment in firmware/livingroom.yaml "
+            "and RELEASE_CHECKLIST.md BL-01b."
         )
 
 
@@ -132,7 +139,7 @@ def main() -> int:
     check_3_yaml_parses()
     check_4_gate_keys()
     check_5_component_files()
-    check_6_platform_pinned()
+    check_6_cstddef_workaround()
     check_7_register_listener()
     print("PRE-FLIGHT OK")
     return 0

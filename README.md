@@ -54,15 +54,34 @@ The D1 mini MAC is printed on the silkscreen under the USB connector. Bind each 
 
 Built with **ESPHome 2026.9.1** (the upstream `ld2420` component has been merged since 2023-11 and gets the maintenance fixes every release, e.g. 2025-11.0 `[ld2420] Eliminate substr() allocation in firmware version parsing`).
 
-> ⚠️ **Toolchain pin (BL-01).** `firmware/livingroom.yaml` pins
-> `espressif8266@2.6.3` under the `esp8266:` block. ESPHome 2025.11+
-> defaults to `espressif8266@4.2.1`, which pulls
-> `toolchain-xtensa@3.x` (gcc 10.3.0) — its libstdc++ headers are
-> inconsistent with `-std=gnu++20` and the build dies with a
-> `'std::size_t' has not been declared` cascade. The 2.6.3 pin pulls
-> `toolchain-xtensa@~2.100100.0` (gcc 5.2) where the same code builds.
-> See `RELEASE_CHECKLIST.md` BL-01 for the full diagnosis and
-> `scripts/preflight.py` `check_6_platform_pinned` for the guard.
+> ⚠️ **Toolchain workaround (BL-01b).** ESPHome 2026.9.1
+> hard-codes `cg.set_cpp_standard("gnu++20")` and rejects any
+> Arduino framework < 3.0.0. The default `toolchain-xtensa@3.x`
+> (gcc 10.3.0) supports gnu++20, but its libstdc++10 `<tuple>` /
+> `<hashtable_policy.h>` assume `std::size_t` is in scope by the
+> time they are first parsed — and ESPHome's `component.h` →
+> `<functional>` include chain does not guarantee that. The build
+> dies with `'std::size_t' has not been declared` cascading
+> through `<hashtable_policy.h>` and `<tuple>`.
+>
+> The fix is a single flag in `firmware/livingroom.yaml`:
+>
+> ```yaml
+> esphome:
+>   platformio_options:
+>     build_flags:
+>       - -include cstddef
+> ```
+>
+> This pre-includes `<cstddef>` in every translation unit, so
+> `std::size_t` is in scope before any toolchain header is
+> parsed. `scripts/preflight.py` `check_6_cstddef_workaround`
+> guards against the flag ever being removed. See
+> `RELEASE_CHECKLIST.md` BL-01 / BL-01a / BL-01b for the full
+> diagnosis history (the earlier `espressif8266@2.6.3` pin from
+> BL-01 turned out to be structurally incompatible with the
+> current ESPHome because the gcc 5.2 toolchain cannot compile
+> C++20).
 
 The YAML lives in `firmware/livingroom.yaml`. Copy `firmware/secrets.yaml.example` to `firmware/secrets.yaml` and fill in Wi-Fi + openHAB `api:` encryption key before flashing.
 

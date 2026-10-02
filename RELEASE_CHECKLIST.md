@@ -9,51 +9,81 @@
 
 ## R1B Backlog (open items)
 
-### BL-01 — Toolchain pinning: `espressif8266@2.6.3` (CLOSED 2026-10-02)
+### BL-01 — Toolchain pinning: `espressif8266@2.6.3` (CLOSED 2026-10-02 → SUPERSEDED 2026-10-02 by BL-01b)
 
-**Symptom.** `esphome run firmware/livingroom.yaml` fails with a cascade of
-errors in `toolchain-xtensa@3.x / gcc 10.3.0` libstdc++ headers
-(`'std::size_t' has not been declared`, `'_M_bucket' was not declared`,
-`'tuple_element_t' has not been declared`, …). The cascade surfaces in
-`src/main.cpp` through `<functional>` (included by ESPHome's
-`component.h`), but the actual trigger is the `ld2420_energy/sensor.cpp`
-include of the same `component.h`.
+**Initial symptom (1st attempt).** `esphome run firmware/livingroom.yaml`
+fails with a cascade of errors in `toolchain-xtensa@3.x / gcc 10.3.0`
+libstdc++ headers (`'std::size_t' has not been declared`,
+`'_M_bucket' was not declared`, `'tuple_element_t' has not been
+declared`, …). The cascade surfaces in `src/main.cpp` through
+`<functional>` (included by ESPHome's `component.h`).
 
-**Root cause.** ESPHome 2025.11+ defaults to `platform =
-platformio/espressif8266@4.2.1`, which pulls `toolchain-xtensa@3.x`
-(gcc 10.3.0). That toolchain's libstdc++ headers are inconsistent with
-`-std=gnu++20` (the standard ESPHome 2026.9.1 builds with). The 2.x
-line of espressif8266 uses `toolchain-xtensa@~2.100100.0` (gcc 5.2) and
-does not exhibit the bug.
+**Initial fix (now superseded).** Pin `espressif8266@2.6.3`, which
+ships `toolchain-xtensa@~2.100100.0` (gcc 5.2) and does not exhibit
+the bug.
 
-**Fix.** Pin the platform in `firmware/livingroom.yaml`:
+**Re-opening (BL-01a).** The pin worked for the build cache, but
+ESPHome 2026.9.1 hard-codes `cg.set_cpp_standard("gnu++20")` and
+rejects any framework < 3.0.0
+(`esphome/esphome@2026.9.1 esphome/components/esp8266/__init__.py:
+_arduino_check_versions`). The actual `toolchain-xtensa` version
+that platform `2.6.3` ships is `2.40802.200502` (gcc 5.2.0), which
+does not understand `-std=gnu++20`:
 
-```yaml
-esp8266:
-  board: d1_mini
-  framework:
-    version: recommended
-    platform_version: 2.6.3
+```
+xtensa-lx106-elf-g++: error: unrecognized command line option '-std=gnu++20'
 ```
 
-> ⚠️ The `platform_version` key lives under `framework:` in the
-> ESPHome 2026.9.1 esp8266 schema. Putting it directly under
-> `esp8266:` is rejected with
-> "[platform_version] is an invalid option for [esp8266]".
-> Verified against `esphome/esphome@2026.9.1
-> esphome/components/esp8266/__init__.py:_arduino_check_versions`.
+The pin strategy from BL-01 is therefore **structurally
+incompatible** with the current ESPHome: gcc 5.2 will never
+compile C++20. The right fix is to accept the default
+espressif8266@4.2.1 + toolchain-xtensa@3.x (gcc 10.3.0) and
+work around the libstdc++ cascade differently — see BL-01b.
 
-**Why we cannot just upgrade the toolchain.** ESPHome 2025.11+ does
-not support any espressif8266 ≥ 3.x without `-std=gnu++20`, and the
-toolchain-xtensa@3.x header bug has no upstream fix as of 2026-09.
-Possible future workarounds (not yet needed):
+**Schema learning.** `platform_version` lives under `framework:`
+in the ESPHome 2026.9.1 esp8266 schema, not at the `esp8266:`
+block level. Putting it at the wrong level is rejected with
+"[platform_version] is an invalid option for [esp8266]". Verified
+against `esphome/esphome@2026.9.1
+esphome/components/esp8266/__init__.py`.
 
-- Override the c++ standard in `build_flags` to `-std=gnu++17`
-  (loses some C++20 features used by upstream ESPHome 2026.x).
-- Wait for a toolchain-xtensa@3.x fix.
+### BL-01b — Pre-include `<cstddef>` for toolchain-xtensa@3.x (CLOSED 2026-10-02)
 
-**Validation.** `scripts/preflight.py` now has `check_6_platform_pinned`
-that fails CI if the pin is removed.
+**Symptom.** With the BL-01 pin reverted, the default
+`espressif8266@4.2.1` + `toolchain-xtensa@3.x` (gcc 10.3.0) returns
+the original `'std::size_t' has not been declared` cascade.
+
+**Root cause.** toolchain-xtensa@3.x's libstdc++10 `<tuple>` and
+`<hashtable_policy.h>` assume `std::size_t` is in scope by the
+time they are first parsed, but `<cstddef>` is not brought in
+early enough by ESPHome's `component.h` → `<functional>` include
+chain. The compiler then chokes on
+`std::size_t __bkt, std::size_t __bkt_count` in `hashtable_policy.h`.
+
+**Fix.** Force `<cstddef>` to be pre-included in every translation
+unit, via the `esphome.platformio_options.build_flags` key in
+`firmware/livingroom.yaml`:
+
+```yaml
+esphome:
+  # ... other esphome: keys ...
+  platformio_options:
+    build_flags:
+      - -include cstddef
+```
+
+The `-include cstddef` flag makes gcc put `<cstddef>` at the very
+top of every `.cpp` file, before any toolchain header is parsed,
+so `std::size_t` / `std::ptrdiff_t` are always in scope.
+
+**Long-term fix (tracker).** File an issue against `esphome/core`
+to add `#include <cstddef>` to `esphome/core/component.h` (or the
+relevant shared header), so the workaround can be removed once
+upstream lands a fix.
+
+**Validation.** `scripts/preflight.py` `check_6_cstddef_workaround`
+fails if the `-include cstddef` flag is ever removed from
+`firmware/livingroom.yaml`.
 
 ### BL-02 — Python binding: `register_listener` (not `add_listener`) (CLOSED 2026-10-02)
 
@@ -141,9 +171,9 @@ Run before any version bump / tag / GitHub release:
 | Component | Version |
 |---|---|
 | ESPHome | 2026.9.1 |
-| platformio/espressif8266 | 2.6.3 (pinned) |
-| toolchain-xtensa | ~2.100100.0 (gcc 5.2.0) |
-| framework-arduinoespressif8266 | ~3.30102.0 |
+| platformio/espressif8266 | 4.2.1 (default; BL-01's `2.6.3` pin is structurally incompatible, see BL-01a) |
+| toolchain-xtensa | 3.x (gcc 10.3.0; see BL-01b for the `<cstddef>` workaround) |
+| framework-arduinoespressif8266 | 3.1.2 (recommended) |
 | LD2420 firmware (target) | ≥ v1.5.4 |
 | Python | 3.14 (macOS preflight) |
 | Host | macOS (MacBook Air, modmj) |

@@ -14,6 +14,33 @@ esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
   min_version: 2025.11.0
+  # BL-01b: toolchain-xtensa@3.x (gcc 10.3.0) workaround.
+  #
+  # The pin to espressif8266@2.6.3 (gcc 5.2) is structurally
+  # incompatible with ESPHome 2026.9.1, which hard-codes
+  # `cg.set_cpp_standard("gnu++20")` and rejects any framework
+  # < 3.0.0 (esphome/esphome@2026.9.1
+  # esphome/components/esp8266/__init__.py:_arduino_check_versions).
+  # gcc 5.2 does not understand `-std=gnu++20` (rejected as
+  # "unrecognized command line option"). The 4.x toolchain (gcc
+  # 10.3.0) supports gnu++20, but its libstdc++ headers are
+  # inconsistent with `-std=gnu++20` when included via
+  # `<functional>` (the cascade surfaces as "'std::size_t' has
+  # not been declared" in <hashtable_policy.h> / <tuple>).
+  #
+  # The cascade happens because the toolchain's
+  # libstdc++10 <tuple> and <hashtable_policy.h> assume `std::size_t`
+  # is already in scope by the time they are first parsed, but
+  # `<cstddef>` is not brought in early enough by ESPHome's
+  # `component.h` → `<functional>` include chain. Pre-including
+  # `<cstddef>` via `-include cstddef` puts `std::size_t` /
+  # `std::ptrdiff_t` in scope before any toolchain header is parsed.
+  #
+  # Pre-flight guard: scripts/preflight.py check_6 (renamed
+  # check_6_cstddef_workaround) verifies this flag is present.
+  platformio_options:
+    build_flags:
+      - -include cstddef
   on_boot:
     priority: 600
     then:
@@ -26,27 +53,6 @@ esp8266:
   board: d1_mini
   framework:
     version: recommended
-    # Pin the espressif8266 platform to 2.6.3 (last release with the gcc 5.2
-    # toolchain). 4.x pulls toolchain-xtensa@3.x (gcc 10.3.0) whose
-    # libstdc++ headers are inconsistent with C++20 in -std=gnu++20 mode
-    # (esphome 2026.9.1 builds with gnu++20 by default). The error
-    # surfaces as "'std::size_t' has not been declared" cascades in
-    # <hashtable_policy.h> / <tuple> when the upstream ESPHome
-    # `ld2420` component pulls in <functional> via component.h. The
-    # ld2420_energy component itself never includes <functional>, so
-    # the error is not in our code.
-    #
-    # If ESPHome eventually requires espressif8266 >= 4.x, the workarounds
-    # are: (a) override the c++ standard in the build_flags above to
-    # -std=gnu++17, or (b) wait for an upstream toolchain-xtensa fix.
-    #
-    # NB: `platform_version` lives under `framework:` in the ESPHome 2026.9.1
-    # esp8266 schema, not at the esp8266: block level. Earlier attempts to
-    # put it directly under esp8266: were rejected with
-    # "[platform_version] is an invalid option for [esp8266]". The preflight
-    # check_6_platform_pinned matches the new placement
-    # (`platform_version: 2.6.3`).
-    platform_version: 2.6.3
 
 logger:
   level: INFO
