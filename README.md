@@ -27,22 +27,24 @@ This is the home-automation companion to the `BirdNest` / `RaisedGarden` VorosEg
 | Part | Notes |
 |---|---|
 | Wemos D1 mini (ESP8266, 4 MB flash) | the MCU |
-| Hi-Link HLK-LD2420 | 24 GHz FMCW mmWave radar, 16 gates × 0.70 m |
-| USB 5 V / 1 A supply | powers the D1 mini, the LD2420 draws 3V3 from the on-board regulator |
-| 4 jumper wires | TX / RX / VCC / GND |
+| Hi-Link HLK-LD2410 (or LD2410B / LD2410C) | 24 GHz FMCW mmWave radar, 9 gates × 0.75 m (at default 0.75 m resolution). C variant also has BLE, not used here. |
+| USB 5 V / 1 A supply | powers the D1 mini; the LD2410 draws from the **5V rail** (USB-direct, NOT the 3V3 LDO) — see BL-05 below |
+| 4 jumper wires | TX / RX / VCC (5V) / GND |
 
 **Wiring table** (D1 mini `D7`/`D8` is GPIO13/GPIO15 — kept off UART0 so the logger can use it):
 
 ```
-LD2420  →  D1 mini
+LD2410  →  D1 mini
 ─────      ──────
 TX       →  D7   (GPIO13)   ESP-side RX
 RX       →  D8   (GPIO15)   ESP-side TX
-VCC      →  3V3
+VCC      →  5V    (BL-05: NOT 3V3)
 GND      →  GND
 ```
 
-The D1 mini `3V3` rail can source ≈ 400 mA. The LD2420 averages 50 mA, peak 100 mA — safe.
+> **Critical (BL-05).** The LD2410 **must be powered from the D1 mini's 5V rail**, NOT 3V3. Some Hi-Link LD2410 batches (and most clone modules) require 5 V for reliable UART signal levels; on 3V3 the UART appears alive on power-up but no communication happens — every text_sensor and per-gate energy sensor stays `NA`. The D1 mini 5V rail is fed directly from the USB input (it bypasses the on-board 3V3 LDO) and can source the LD2410's 50 mA average / 100 mA peak. If your `Firmware version` and `LD2410 MAC` text_sensors are `NA`, this is the first thing to verify.
+
+For full hardware details (why D7/D8, power budget, mounting tips, UART protocol notes), see [`docs/hardware.md`](docs/hardware.md).
 
 ## Network setup
 
@@ -184,7 +186,7 @@ For best results with a 6 m room on wall mounting:
 ```
 .
 ├── firmware/
-│   ├── livingroom.yaml           ESPHome configuration for the D1 mini + LD2420
+│   ├── livingroom.yaml           ESPHome configuration for the D1 mini + LD2410
 │   └── secrets.yaml.example      Template — copy to secrets.yaml and fill in
 ├── components/ld2420_energy/     Local ESPHome component: 16 gate-energy sensors
 │   ├── __init__.py

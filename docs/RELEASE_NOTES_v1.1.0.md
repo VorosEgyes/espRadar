@@ -33,13 +33,13 @@ from v1.0.0, so no re-pairing with openHAB is required).
 | Local component | `components/ld2420_energy/` (4 files) | none — upstream-native |
 | openHAB entities | ~25 (presence, distance, 16 gates, fw_version, mode, thresholds, apply/revert buttons) | ~50 (presence, moving/still/detection distances, moving/still energies, 9×2 gate energies, fw_version, MAC, engineering mode switch, 4 selects, 20 numbers, 3 buttons) |
 
-### Pinout (unchanged from v1.0.0)
+### Pinout (unchanged from v1.0.0, except the supply voltage — see BL-05)
 
 | LD2410 láb | D1 mini láb | Megjegyzés |
 |---|---|---|
 | TX | D7 (GPIO13) | ESP-oldali RX — a LD2410 **TX-eli** az adatokat, a D1 mini **fogadja** |
 | RX | D8 (GPIO15) | ESP-oldali TX — a D1 mini **küldi** a parancsokat, a LD2410 **fogadja** |
-| VCC | 3V3 | 3.3 V táp |
+| **VCC** | **5V** | **BL-05: az 5V sínt használd, NEM a 3V3-at** — különben minden szenzor `NA` marad |
 | GND | GND | Közös föld |
 
 The LD2410 out-of-the-box baud rate is 256000. **Hardware UART

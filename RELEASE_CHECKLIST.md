@@ -99,6 +99,91 @@ provenance) plus `check_6b_platformio_options_structure` (PyYAML
 parse + structural check) fail if the flag is ever removed or
 if `cstddef` is substituted for `stddef.h`.
 
+### BL-04 — Preflight guard check_4_ld2410_yaml + _strip_yaml_comments (CLOSED 2026-10-02)
+
+The preflight.py was rewritten for the v1.1.0 LD2410 firmware
+to drop the LD2420-specific 16 `gate_energy_N:` assertion
+(`check_4_gate_keys`) and add a positive LD2410 check
+(`check_4_ld2410_yaml`) that verifies:
+
+- top-level `ld2410:` hub block
+- at least one `platform: ld2410` block
+- `uart.baud_rate: ${ld2410_baud}` and 256000 in the file
+- at least one of `has_target:` / `has_moving_target:` /
+  `has_still_target:` binary sensor
+- no `ld2420:` / `platform: ld2420` / `ld2420_baud` / `fw_version` / `query:` (typos) in the active code
+- the `components/ld2420_energy/` directory is still on disk (v1.0.0 archive)
+
+To avoid substring false-positives from the comment text that
+mentions `ld2420` for historical context, a `_strip_yaml_comments`
+helper was added. The doksi page (esphome.io) for the LD2410
+sensor is out of date in two places (the `text_sensor.fw_version`
+key is actually `version`, and the `button.query` key is
+actually `query_params`); the upstream Python schema
+(`esphome/components/ld2410/text_sensor.py` and
+`esphome/components/ld2410/button/__init__.py`) is the source
+of truth, and the preflight checks are derived from it.
+
+**Validation.** `scripts/preflight.py` `check_4_ld2410_yaml`
+fails CI if the YAML ever drifts back to an LD2420-style
+config (or to a wrong-key spelling of any LD2410 entity).
+
+### BL-05 — Hardware: LD2410 must be powered from the D1 mini 5V rail, NOT 3V3 (CLOSED 2026-10-02)
+
+**Symptom.** The first v1.1.0 build on the desk booted
+successfully (the D1 mini joined the Wi-Fi, the web_server UI
+loaded), but every LD2410 entity showed `NA` — `Firmware
+version`, `LD2410 MAC`, `Detection distance`, all per-gate
+`g0..g8.move_energy` / `still_energy` numbers. The D1 mini
+itself was healthy (no warnings in the component loop other
+than the `ld2410 took 253 ms` long-operation warning, which is
+normal in engineering mode).
+
+**Root cause.** The LD2410 was wired with VCC to the D1 mini's
+`3V3` pin (per the LD2420 wiring in the v1.0.0 docs). Some
+Hi-Link LD2410 batches (and most clone modules) require 5 V
+for reliable UART signal levels; on 3V3 the UART appears alive
+on power-up but no communication happens (`Firmware version`
+stays `NA`, all per-gate energy sensors stay `NA`,
+`Detection distance` stays `NA`). The symptom looks identical
+to a wiring fault (TX/RX reversed) or a baud-rate mismatch.
+
+**Fix.** Move the LD2410 VCC jumper from the D1 mini `3V3`
+pin to the `5V` pin. The D1 mini's `5V` header pin is fed
+directly from the USB input (it bypasses the on-board 3V3
+LDO) and can source the LD2410's 50 mA average / 100 mA peak.
+After the move, the `Firmware version` text_sensor shows the
+LD2410's internal firmware version (typically `v2.x.x`) and
+all other entities populate within ~1 second.
+
+**Validation.** The first entity to populate is `LD2410 MAC`
+— if it goes from `NA` to a real MAC address (e.g.
+`AA:BB:CC:DD:EE:FF`), the wiring is good. The firmware
+version is the second; the per-gate energies require
+`Engineering mode` to be on (and auto-disable after 5 min,
+see `docs/RELEASE_NOTES_v1.1.0.md`).
+
+**Docs updated.**
+
+- `firmware/livingroom.yaml`: long comment in `substitutions:`
+  explaining the 5V requirement and the silent-no-communication
+  symptom on 3V3.
+- `README.md` Hardware section: wiring table shows
+  `VCC → 5V (BL-05: NOT 3V3)` and a callout box.
+- `docs/hardware.md`: full rewrite from LD2420 to LD2410,
+  with the 5V supply note as a critical warning at the top
+  and a detailed `## Power budget` section.
+- `docs/RELEASE_NOTES_v1.1.0.md` pinout table: VCC row
+  updated to 5V with BL-05 reference.
+
+**Long-term fix (tracker).** Add a `check_5_ld2410_supply_voltage`
+preflight check that reads the `firmware/livingroom.yaml`
+comment for the 5V marker. Not implemented yet because the
+preflight is YAML-side, not hardware-side — there is no way
+to detect a 3V3 wiring from the YAML alone. The `BL-05`
+backlog item is the doc-level guard; the actual hardware
+verification is the `LD2410 MAC` text_sensor populating.
+
 ### BL-02 — Python binding: `register_listener` (not `add_listener`) (CLOSED 2026-10-02)
 
 **Symptom.** `main.cpp:693:15: error: 'class esphome::ld2420::LD2420Component'

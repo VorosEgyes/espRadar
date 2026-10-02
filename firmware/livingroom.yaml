@@ -13,6 +13,20 @@ substitutions:
   # after the first boot through openHAB and persisted automatically
   # to LD2410 EEPROM on every set. The substitutions here are only
   # for platform-level constants.
+  #
+  # HARDWARE: the LD2410 must be powered from the D1 mini's **5V**
+  # rail, NOT 3V3 (BL-05). Some Hi-Link LD2410 batches (and most
+  # clone modules) require 5 V for reliable UART signal levels;
+  # on 3V3 the UART may appear alive on power-up but no
+  # communication happens (`Firmware version` text_sensor stays
+  # `NA`, all per-gate energy sensors stay `NA`, `Detection
+  # distance` stays `NA`). The D1 mini 5V rail is fed directly
+  # from the USB 5V input through the on-board regulator's
+  # bypass; it can source ~400 mA which is plenty for the
+  # LD2410's 50 mA average / 100 mA peak. NEVER connect LD2410
+  # VCC to the D1 mini 3V3 rail — the symptom is the same as a
+  # wiring fault (TX/RX reversed) and is hard to diagnose
+  # without first checking the `LD2410 MAC` text_sensor.
 
 esphome:
   name: ${device_name}
