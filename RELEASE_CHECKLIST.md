@@ -328,11 +328,17 @@ Run before any version bump / tag / GitHub release:
 
 ## Build environment snapshot
 
-### First successful build (2026-10-02 23:48:24 +0200)
+### First successful build (v1.0.0, 2026-10-02 23:48:24 +0200)
 
-This is the **first build of the espRadar project**. The firmware
-is the binary referenced by the eventual `v1.0.0` release tag
-(once Miklós approves the release gate).
+The firmware referenced by the `v1.0.0` release tag
+(https://github.com/VorosEgyes/espRadar/releases/tag/v1.0.0,
+release id 402181158). The release SHA-256
+`fb0ea4f06ddc406ce41632df86615962bbf2df0f50d0466072a4f7e537398d3c`
+is the canonical OTA reference for any node that still runs
+the v1.0.0 build. The build target was the **HLK-LD2420**
+16-gate mmWave radar, but the v1.0.0 build cache was wiped by
+the v1.1.0 clean build, so the path references below point to
+the v1.1.0 cache (`build/radar`).
 
 | Component | Value |
 |---|---|
@@ -340,7 +346,7 @@ is the binary referenced by the eventual `v1.0.0` release tag
 | platformio/espressif8266 | 4.2.1 (default; BL-01's `2.6.3` pin is structurally incompatible, see BL-01a) |
 | toolchain-xtensa | 3.x (gcc 10.3.0; see BL-01b for the `<stddef.h>` workaround) |
 | framework-arduinoespressif8266 | 3.1.2 (recommended) |
-| LD2420 firmware (target) | ≥ v1.5.4 |
+| **LD2420** firmware (target) | ≥ v1.5.3 (baud 115200) |
 | Python | 3.14 (macOS preflight) |
 | Host | macOS (MacBook Air, modmj) |
 | D1 mini (target) | ESP8266EX, 80MHz, 4MB flash, MAC f4:cf:a2:d8:18:e4 |
@@ -348,7 +354,7 @@ is the binary referenced by the eventual `v1.0.0` release tag
 | esptool | 5.3.1 (Stub flasher) |
 | Flash baud | 460800 |
 
-| Build artifact | Value |
+| Build artifact (v1.0.0) | Value |
 |---|---|
 | `config_hash` | 0xFED1A364 (4275151716) |
 | `build_time_str` | 2026-10-02 23:48:24 +0200 |
@@ -359,9 +365,54 @@ is the binary referenced by the eventual `v1.0.0` release tag
 | Link time | 125.20 s (full clean build) |
 | Upload time | 9.2 s at 412.6 kbit/s (compressed 338625 / 472496) |
 | Flash erase range | 0x00000000 → 0x00073fff |
-| `firmware.elf` | `firmware/.esphome/build/livingroom/.pioenvs/livingroom/firmware.elf` |
 
-**Reference for OTA verification.** The SHA-256 of the
-`firmware.bin` is the canonical fingerprint of this build. Any
-OTA update payload should match this hash (or the corresponding
-hash of a later tagged release) byte-for-byte.
+### Second successful build (v1.1.0, 2026-10-03 14:07:40 +0200)
+
+The firmware referenced by the `v1.1.0` release tag
+(LD2410 mmWave radar, per-node API encryption key
+`api_encryption_key_radar: zi6kxy7fCriazSlMjprvL9aLhS0F1UF3ri8rmL1rlpI=`).
+The release SHA-256
+`44c0e819ed3ffed997a7278f577ab42e189f24456f23e7f7daf5354a329a2867`
+is the canonical OTA reference for the v1.1.0 build. To upgrade
+a v1.0.0 node to v1.1.0, **a USB re-flash is required** (BL-06
+changed the noise session key — the OTA partition on the v1.0.0
+firmware uses the legacy shared `api_encryption_key:`, and the
+v1.1.0 firmware uses the per-node `api_encryption_key_radar:`;
+the noise handshake would fail on an OTA upload).
+
+| Component | Value |
+|---|---|
+| ESPHome | 2026.9.1 |
+| platformio/espressif8266 | 4.2.1 |
+| toolchain-xtensa | 3.x (gcc 10.3.0; BL-01b) |
+| framework-arduinoespressif8266 | 3.1.2 (recommended) |
+| **LD2410** firmware (target) | ≥ v2.0 (baud 256000, **VCC on 5V — NOT 3V3**, BL-05) |
+| Python | 3.14 (macOS preflight) |
+| Host | macOS (MacBook Air, modmj) |
+| D1 mini (target) | ESP8266EX, 80MHz, 4MB flash, MAC f4:cf:a2:d8:18:e4 |
+| USB port | /dev/cu.usbserial-1130 (CH340 USB2.0-Ser!) |
+| esptool | 5.3.1 (Stub flasher) |
+| Flash baud | 460800 |
+
+| Build artifact (v1.1.0) | Value |
+|---|---|
+| `config_hash` | 0x349CF3DC (882855964) |
+| `build_time_str` | 2026-10-03 14:07:40 +0200 |
+| `firmware.bin` size | 475008 bytes (464 KB) |
+| `firmware.bin` SHA-256 | `44c0e819ed3ffed997a7278f577ab42e189f24456f23e7f7daf5354a329a2867` |
+| `firmware.bin` path | `firmware/.esphome/build/radar/.pioenvs/radar/firmware.bin` |
+| `firmware.elf` | `firmware/.esphome/build/radar/.pioenvs/radar/firmware.elf` |
+
+**Reference for OTA verification.** Each tagged release has a
+canonical `firmware.bin` SHA-256 that any later OTA payload
+must match byte-for-byte:
+
+| Tag | SHA-256 | Notes |
+|---|---|---|
+| `v1.0.0` | `fb0ea4f06ddc...398d3c` | LD2420, shared `api_encryption_key:`, UART 115200 |
+| `v1.1.0` | `44c0e819ed3f...a2867` | LD2410, per-node `api_encryption_key_radar:`, UART 256000, 5V supply |
+
+The v1.0.0 → v1.1.0 OTA upgrade **does not work** (the noise
+session key is derived from the encryption key on both sides,
+and the two firmware builds use different keys). A USB re-flash
+is required.

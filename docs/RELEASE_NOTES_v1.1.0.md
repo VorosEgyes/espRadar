@@ -131,15 +131,50 @@ expects it to be loaded via `external_components:`.
 
 ---
 
-## Build environment (snapshot, filled in after a successful build)
+## Build environment (v1.1.0 snapshot, 2026-10-03 14:07:40 +0200)
 
 | Component | Value |
 |---|---|
+| ESPHome | 2026.9.1 |
+| platformio/espressif8266 | 4.2.1 |
+| toolchain-xtensa | 3.x (gcc 10.3.0; BL-01b) |
+| framework-arduinoespressif8266 | 3.1.2 (recommended) |
+| LD2410 firmware (target) | ≥ v2.0 (baud 256000, **VCC on 5V — NOT 3V3**, BL-05) |
+| Python | 3.14 (macOS preflight) |
+| Host | macOS (MacBook Air, modmj) |
+| D1 mini (target) | ESP8266EX, 80MHz, 4MB flash, MAC f4:cf:a2:d8:18:e4 |
+| USB port | /dev/cu.usbserial-1130 (CH340 USB2.0-Ser!) |
+| esptool | 5.3.1 (Stub flasher) |
+| Flash baud | 460800 |
 
-> The actual config_hash, firmware.bin SHA-256, RAM/Flash usage
-> and link time will be filled in here after the first v1.1.0
-> build succeeds, mirroring the v1.0.0 snapshot in
-> `RELEASE_CHECKLIST.md` → "Build environment snapshot".
+| Build artifact (v1.1.0) | Value |
+|---|---|
+| `config_hash` | 0x349CF3DC (882855964) |
+| `build_time_str` | 2026-10-03 14:07:40 +0200 |
+| `firmware.bin` size | 475008 bytes (464 KB) |
+| `firmware.bin` SHA-256 | `44c0e819ed3ffed997a7278f577ab42e189f24456f23e7f7daf5354a329a2867` |
+| `firmware.bin` path | `firmware/.esphome/build/radar/.pioenvs/radar/firmware.bin` |
+| `firmware.elf` | `firmware/.esphome/build/radar/.pioenvs/radar/firmware.elf` |
+| API encryption key | `api_encryption_key_radar: zi6kxy7fCriazSlMjprvL9aLhS0F1UF3ri8rmL1rlpI=` (per-node, BL-06) |
+| mDNS hostname | `radar.local` (from `esphome.name: ${device_name}`) |
+| Fallback AP SSID | `radar Fallback` (from `wifi.ap.ssid: "${device_name} Fallback"`) |
+
+Reference for OTA verification: the SHA-256 of the `firmware.bin`
+is the canonical fingerprint of this build. Any later OTA payload
+uploaded to the v1.1.0 firmware on the D1 mini must match this
+hash byte-for-byte (or the corresponding hash of a later tagged
+release). See `RELEASE_CHECKLIST.md` → "Build environment
+snapshot" for the full v1.0.0 vs v1.1.0 comparison table.
+
+**Note on v1.0.0 → v1.1.0 upgrade.** The v1.0.0 firmware on the
+D1 mini (SHA-256 `fb0ea4f06ddc416ce41632df86615962bbf2df0f50d0466072a4f7e537398d3c`)
+uses the legacy shared `api_encryption_key:`, while v1.1.0 uses
+the per-node `api_encryption_key_radar:`. The noise session
+key is derived from the encryption key on both sides, so a
+v1.1.0 OTA upload would fail the handshake. To upgrade a
+v1.0.0 node to v1.1.0, **a USB re-flash is required** (the
+`firmware-v1.1.0.bin` asset below can be flashed with
+`esptool.py` or via the ESPHome dashboard).
 
 ---
 
