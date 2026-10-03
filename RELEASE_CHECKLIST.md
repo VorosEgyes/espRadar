@@ -184,6 +184,67 @@ to detect a 3V3 wiring from the YAML alone. The `BL-05`
 backlog item is the doc-level guard; the actual hardware
 verification is the `LD2410 MAC` text_sensor populating.
 
+### BL-06 — Per-node API encryption keys (CLOSED 2026-10-02)
+
+**Symptom.** The first v1.1.0 build on the desk worked end-to-end
+on a single node. When the second node was added (with the
+`scripts/new_node.sh bedroom` script), the openHAB binding
+showed `192.168.0.207 (192.168.0.207): Socket operation
+failed CONNECTION_CLOSED errno=11` in the loop log — the
+D1 mini accepted the TCP connection on port 6053, the noise
+handshake started, then failed immediately.
+
+**Root cause.** The `seime/openhab-esphome` binding derives a
+per-device session key from `(device_name, encryption_key)`.
+Sharing a single `api_encryption_key` across multiple nodes
+made the noise session-key the same for both nodes, but the
+client-side (D1 mini) noise stack derives a different key
+based on the connection's `device_name` (the ESPHome device
+identity). The handshake failed because the two sides derived
+different session keys.
+
+**Fix.** Every node MUST have its own encryption key. The
+`scripts/new_node.sh <név>` script now:
+1. Generates a fresh 32-byte random `api_encryption_key_<név>`.
+2. Appends the key to `firmware/secrets.yaml` (or replaces it
+   if the script is re-run with the same `<név>`).
+3. Sets `key: !secret api_encryption_key_<név>` in the new
+   `firmware/<név>.yaml` (the BL-06 regex anchor in `sed`
+   matches `key: !secret api_encryption_key\b`, which is the
+   `radar` node's old shared-key line — the new YAML replaces
+   it with the per-node key).
+
+The v1.0.0 firmware used the legacy `api_encryption_key:`
+(shared across all nodes). The v1.0.0 SHA-256
+`fb0ea4f06ddc406ce41632df86615962bbf2df0f50d0466072a4f7e537398d3c`
+remains the canonical OTA reference for any node that still
+runs the v1.0.0 build. The v1.1.0 firmware (the new build)
+uses `api_encryption_key_radar:` (per-node). To move a v1.0.0
+node to v1.1.0, a USB re-flash is required (OTA updates fail
+because the noise session key changed).
+
+**Validation.** `scripts/preflight.py` `check_2b_per_node_api_key`
+parses `firmware/radar.yaml` and verifies that every
+`!secret api_encryption_key_*` reference has a matching
+`api_encryption_key_*:` entry in `firmware/secrets.yaml`. The
+check runs after `check_2_no_placeholders` so the substitution
+references are guaranteed to resolve before `esphome run`.
+
+**Files changed (BL-06).**
+- `firmware/secrets.yaml.example` — rewritten with per-node
+  key comment block.
+- `firmware/secrets.yaml` — added `api_encryption_key_radar:`
+  (the v1.1.0 build's key). The legacy shared
+  `api_encryption_key:` is kept for v1.0.0 firmware
+  compatibility.
+- `firmware/radar.yaml` — `key: !secret api_encryption_key`
+  → `key: !secret api_encryption_key_radar`. OTA block
+  comment updated to reflect that ESPHome 2026.9.1
+  enables OTA password authentication by default.
+- `scripts/new_node.sh` — generates a fresh per-node key,
+  appends to secrets.yaml, sets the YAML reference.
+- `scripts/preflight.py` — new `check_2b_per_node_api_key`.
+
 ### BL-02 — Python binding: `register_listener` (not `add_listener`) (CLOSED 2026-10-02)
 
 **Symptom.** `main.cpp:693:15: error: 'class esphome::ld2420::LD2420Component'

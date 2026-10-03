@@ -15,9 +15,10 @@ that is still wired to an LD2420 module. The v1.1.0 firmware
 
 The v1.0.0 → v1.1.0 transition is **per-node**: rewire the UART
 jumpers if needed (LD2410 pinout is identical to LD2420:
-TX → D7, RX → D8, VCC → 3V3, GND → GND), then flash the
-v1.1.0 firmware over OTA (the API encryption key is unchanged
-from v1.0.0, so no re-pairing with openHAB is required).
+TX → D7, RX → D8, **VCC → 5V (BL-05: NOT 3V3)**, GND → GND),
+then flash the v1.1.0 firmware over **USB** (see "OTA vs USB
+upgrade" below — the API encryption key changed in v1.1.0,
+so OTA updates from v1.0.0 to v1.1.0 do NOT work).
 
 ### What changed (v1.0.0 → v1.1.0)
 
@@ -176,10 +177,17 @@ and has no toolchain surprises.
   copies the parent into the build dir. v1.1.0 does not load
   `external_components:` at all (LD2410 is upstream-native), so
   this artifact is gone for v1.1.0 builds.
-- v1.0.0 → v1.1.0 OTA test: not yet performed end-to-end. The
-  API encryption key is unchanged, so in theory the OTA
-  partition should accept the v1.1.0 firmware. If it doesn't,
-  the recovery is a USB re-flash (see "How to flash" above).
+- v1.0.0 → v1.1.0 OTA test: **does not work** (BL-06). The
+  v1.1.0 firmware uses a per-node `api_encryption_key_radar:`
+  (see `firmware/secrets.yaml`); the v1.0.0 firmware on the
+  D1 mini (SHA-256 `fb0ea4f06ddc416ce41632df86615962bbf2df0f50d0466072a4f7e537398d3c`)
+  uses the legacy shared `api_encryption_key:`. The noise
+  session key is derived from the encryption key on both
+  sides, so a v1.1.0 OTA upload would fail the handshake
+  on the D1 mini. The recovery is a USB re-flash (see
+  "How to flash" above) — the openHAB binding also needs
+  the new per-node key pasted into the Thing's
+  `encryptionKey` field after the flash.
 
 ---
 

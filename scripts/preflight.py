@@ -75,6 +75,69 @@ def check_2_no_placeholders() -> None:
         fail("firmware/secrets.yaml still contains placeholder Wi-Fi credentials.")
 
 
+def check_2b_per_node_api_key() -> None:
+    """Guard the BL-06 per-node API encryption key.
+
+    Every `firmware/<név>.yaml` references a `!secret
+    api_encryption_key_<név>` key (set by `scripts/new_node.sh
+    <név>`). If the radar.yaml references a key that is not
+    defined in secrets.yaml, `esphome run` will fail with a
+    substitution error. This check parses radar.yaml and
+    verifies that every `!secret api_encryption_key_...`
+    reference has a matching `api_encryption_key_...:` entry in
+    secrets.yaml.
+    """
+    if not _HAS_YAML:
+        return
+    if not SECRETS.exists():
+        return
+    try:
+        cfg = yaml.load(MAIN_YAML.read_text(encoding="utf-8"), Loader=_SecretLoader)  # type: ignore[union-attr]
+    except yaml.YAMLError as e:  # type: ignore[union-attr]
+        return  # let check_3_yaml_parses handle parse errors
+    if not isinstance(cfg, dict):
+        return
+
+    secrets_text = SECRETS.read_text(encoding="utf-8")
+    # Walk the YAML and collect every `!secret <key>` reference.
+    # The `_SecretLoader` resolves `!secret` to the literal string
+    # after the tag, so values like `api_encryption_key_radar` are
+    # plain strings in the parsed dict.
+    referenced_secrets: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+        elif isinstance(node, str):
+            # `!secret` was resolved to the literal string. We do not
+            # distinguish `!secret api_encryption_key_radar` from
+            # the literal string `"api_encryption_key_radar"`, so we
+            # only flag keys that match the `api_encryption_key_*`
+            # pattern.
+            if node.startswith("api_encryption_key_"):
+                referenced_secrets.add(node)
+
+    walk(cfg)
+
+    for ref in sorted(referenced_secrets):
+        # The secrets.yaml format is `api_encryption_key_<név>:
+        # "base64..."`. The key is a YAML key at the start of a line.
+        if not re.search(
+            rf"^{re.escape(ref)}:", secrets_text, re.MULTILINE
+        ):
+            fail(
+                f"firmware/radar.yaml references `!secret {ref}` but "
+                f"`{ref}` is not defined in firmware/secrets.yaml. "
+                f"Run `scripts/new_node.sh <név>` to generate a fresh "
+                f"per-node API encryption key, or manually append "
+                f"`{ref}: \"<32-byte-base64>\"` to secrets.yaml."
+            )
+
+
 def check_3_yaml_parses() -> None:
     """Quick syntax check: the YAML must parse.
 
@@ -447,6 +510,7 @@ def check_7_register_listener() -> None:
 def main() -> int:
     check_1_secrets()
     check_2_no_placeholders()
+    check_2b_per_node_api_key()
     check_3_yaml_parses()
     check_4_ld2410_yaml()
     check_5_component_files()
