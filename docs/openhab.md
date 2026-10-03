@@ -21,26 +21,71 @@ matches the v1.1.0 channel set exactly.
 
 ## Binding install
 
+### Step 0 — Identify your openHAB version
+
+The binding has **different JAR files for openHAB 3.x and
+4.x/5.x/6.x** (different OSGi manifest ranges). Find your
+openHAB version first:
+
+```text
+# MainUI → Settings → About (top-right "i" icon)
+# OR on the openHAB host:
+openhab-cli status
+# OR:
+cat $OPENHAB_HOME/userdata/etc/version.txt
+```
+
+Common output formats:
+- `openHAB 3.4.5` → use the **3.x JAR** (`latest_oh3`)
+- `openHAB 4.3.0` / `5.0.3` / `5.1.3` / `5.1.4` → use the **4.x/5.x/6.x JAR** (`latest_oh4`)
+
 ### Step 1 — Install the openhab-esphome JAR
 
-openHAB 5.1.3 (the latest stable as of 2026-10-02) ships the
-ESPHome binding in the Marketplace, so the simplest install
-path is via the UI:
+For openHAB **4.x, 5.x, 6.x** (the recommended install on 5.1.3+):
 
 > **Settings → Add-ons → Bindings → "ESPHome Native API" → Install.**
 
-If your openHAB version does not list it (older 5.x or 4.x),
-fall back to the manual JAR install via the Karaf console:
+If your openHAB version does not list it (older 5.x without
+the Marketplace, or 4.x without the index), fall back to the
+manual JAR install via the Karaf console:
 
 ```text
-openhab> feature:install openhab-transport-serial
 openhab> bundle:install https://github.com/seime/openhab-esphome/releases/download/latest_oh4/no.seime.openhab.binding.esphome-4.1.0-SNAPSHOT.jar
+```
+
+For openHAB **3.x** (the binding is named "ESPHome NativeAPI"
+in the 3.x Marketplace, one word with no space):
+
+```text
+openhab> bundle:install https://github.com/seime/openhab-esphome/releases/download/latest_oh3/no.seime.openhab.binding.esphome-4.0.0-SNAPSHOT.jar
+```
+
+Alternatively (any openHAB version, no Karaf needed), drop
+the JAR file directly into the openHAB addons folder:
+
+| Install method | Addons folder |
+|---|---|
+| Debian / Ubuntu package | `/usr/share/openhab/addons/` |
+| openHABian | `/opt/openhab/addons/` |
+| Docker (official image) | `/openhab/addons/` |
+| Manual install | `$OPENHAB_HOME/addons/` |
+| openHAB Cloud (hosted) | not supported |
+
+```bash
+# Debian / Ubuntu
+sudo curl -L -o /usr/share/openhab/addons/no.seime.openhab.binding.esphome-4.1.0-SNAPSHOT.jar \
+    https://github.com/seime/openhab-esphome/releases/download/latest_oh4/no.seime.openhab.binding.esphome-4.1.0-SNAPSHOT.jar
+sudo systemctl restart openhab
+
+# Docker
+docker cp ./no.seime.openhab.binding.esphome-4.1.0-SNAPSHOT.jar openhab:/openhab/addons/
+docker exec openhab bundle:list | grep esphome   # verify
 ```
 
 Watch the log:
 
 ```text
-tail -F /openhab/userdata/logs/openhab.log | grep -i esphome
+tail -F $OPENHAB_HOME/userdata/logs/openhab.log | grep -i esphome
 ```
 
 You should see:
