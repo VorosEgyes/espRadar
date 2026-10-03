@@ -55,8 +55,27 @@ if [[ ! -f "${SRC}" ]]; then
     exit 66
 fi
 if [[ -f "${DST}" ]]; then
-    echo "ERROR: ${DST} already exists." >&2
-    exit 73
+    # The destination firmware YAML already exists. Decide whether
+    # to refuse (and exit 73) based on whether the file is tracked
+    # in git:
+    #   - Tracked (in git history): refuse. The file was committed
+    #     intentionally, and overwriting it would silently lose the
+    #     commit. The user should `git checkout` to revert or
+    #     delete the file explicitly with `git rm`.
+    #   - Untracked: overwrite. The file is a leftover from a
+    #     previous test run or a manual `cp` that the user did
+    #     not commit. The new_node.sh script's purpose is exactly
+    #     to generate this file from a known-good template (radar.yaml),
+    #     so overwriting an untracked copy is the desired behavior.
+    if git ls-files --error-unmatch "${DST}" >/dev/null 2>&1; then
+        echo "ERROR: ${DST} is tracked in git (committed). To regenerate, run" >&2
+        echo "       'git rm ${DST} && ${0} ${NAME}' (or move it aside and" >&2
+        echo "       re-run). The script will not overwrite a committed file." >&2
+        exit 73
+    else
+        echo "NOTE: ${DST} exists but is untracked — overwriting with the"
+        echo "      new node config from ${SRC}."
+    fi
 fi
 
 # Generate a fresh 32-byte random key and base64-encode it.
