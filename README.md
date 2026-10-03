@@ -113,39 +113,37 @@ The custom component `components/ld2420_energy/` adds the 16 gate-energy sensors
 
 Uses the third-party **[seime/openhab-esphome](https://github.com/seime/openhab-esphome)** binding (MIT, currently `[4.0.0.0;6.0.0.0)` — openHAB 5.1.3 ✓).
 
+The full integration guide (binding install, mDNS discovery, thing / items / sitemap / rules, common gotchas) is in **[`docs/openhab.md`](docs/openhab.md)**. A minimal example below; the v1.1.0 LD2410 firmware exposes the channel set below.
+
 ### 1. Install the binding
 
 The binding has an **unmet dependency** on the `bluetooth` binding even if you do not use it; install both:
 
 ```text
-openhab> feature:install openhab-transport-serial
 openhab> bundle:install https://github.com/seime/openhab-esphome/releases/download/latest_oh4/no.seime.openhab.binding.esphome-4.1.0-SNAPSHOT.jar
 ```
 
-(or drop the JAR into `$OPENHAB_ADDONS` and install the `bluetooth` add-on through the UI).
+(or drop the JAR into `$OPENHAB_ADDONS` and install the `bluetooth` add-on through the UI). For openHAB 5.1.3+, the binding is also available in the **Marketplace** (Settings → Add-ons → Bindings → "ESPHome Native API" → Install).
 
 ### 2. Discover the device
 
-The binding discovers the ESPHome node over mDNS as `radar.local` (or whatever `name:` you set in the YAML). You will see it appear in **Settings → Things → Inbox** within a few seconds. Add it, paste the `api.encryption.key` from `firmware/secrets.yaml` into the Thing configuration.
+The binding discovers the ESPHome node over mDNS as `radar.local` (the `name:` field in `firmware/radar.yaml`). You will see it appear in **Settings → Things → Inbox** within a few seconds. Add it, paste the `api.encryption.key` from `firmware/secrets.yaml` into the Thing configuration.
 
-The Thing auto-creates the following Channels:
+The Thing auto-creates the following channels (v1.1.0 LD2410 channel set):
 
-| Type | Name |
+| Type | Channels |
 |---|---|
-| Switch | `restart_device` |
-| Select | `operating_mode` (Normal / Calibrate / Simple) |
-| Number | `presence_timeout`, `min_gate_distance`, `max_gate_distance`, `gate_select`, `still_threshold`, `move_threshold` |
-| Sensor | `moving_distance`, `gate_energy_0` … `gate_energy_15` |
-| Text Sensor | `fw_version` |
-| Binary Sensor | `has_target` (presence) |
-| Button | `apply_config`, `factory_reset`, `restart_module`, `revert_config` |
+| Binary Sensor | `has_target`, `has_moving_target`, `has_still_target` |
+| Sensor | `moving_distance`, `still_distance`, `detection_distance`, `moving_energy`, `still_energy`, `g0`..`g8.move_energy`, `g0`..`g8.still_energy` (per-gate only in engineering mode) |
+| Text Sensor | `fw_version`, `mac_address` (LD2410 MAC) |
+| Switch | `restart`, `engineering_mode` |
+| Select | `distance_resolution`, `baud_rate`, `light_function`, `out_pin_level` |
+| Number | `max_move_distance_gate`, `max_still_distance_gate`, `timeout` (None duration), `light_threshold`, `g0`..`g8.move_threshold`, `g0`..`g8.still_threshold` |
+| Button | `restart` (Restart module), `factory_reset`, `query_params` |
+
+For the exact `Radar_*` item names, full sitemap, rule examples (AC auto-off on `Radar_HasTarget` close, AC low-power on `Radar_HasMovingTarget` close + `Radar_HasStillTarget` open), and 6 common gotchas (encryption_key mismatch, None duration tuning, 5V-on-VCC wiring, etc.), see **[`docs/openhab.md`](docs/openhab.md)**.
 
 ### 3. Items & Sitemap (minimal example)
-
-The v1.1.0 LD2410 firmware exposes the following entities (channels)
-through the `seime/openhab-esphome` binding. The full sitemap
-draft is in [`docs/RELEASE_NOTES_v1.1.0.md`](docs/RELEASE_NOTES_v1.1.0.md);
-a minimal example below.
 
 ```text
 // items/radar.items
