@@ -1,0 +1,254 @@
+# LD2410 radar block — !include'd by per-node firmware YAMLs that target
+# the Hi-Link HLK-LD2410 (or LD2410B / LD2410C) module.
+#
+# This block contains EVERY radar-specific entry: UART, the upstream
+# `ld2410:` component, binary_sensor / sensor / text_sensor / switch /
+# select / number / button entities. Pair it with `firmware/_common.yaml.include`
+# in a per-node YAML (see firmware/secrets.yaml.example for the API
+# encryption key template).
+#
+# Wiring (BL-05): LD2410 VCC MUST be on the D1 mini 5V rail, not 3V3.
+# The D1 mini's 3V3 LDO can power it, but some Hi-Link batches (and
+# most clones) require 5V for reliable UART signal levels — on 3V3 the
+# UART appears alive on power-up but every text_sensor and per-gate
+# energy sensor stays `NA`.
+
+# =====================================================================
+# UART
+# =====================================================================
+# Hardware UART on D7/D8 (GPIO13/GPIO15) — kept off UART0 so the logger
+# can use it (and the bootloader can use GPIO1/GPIO3 for handshake).
+uart:
+  id: ld2410_uart
+  tx_pin: GPIO15
+  rx_pin: GPIO13
+  # LD2410 out-of-the-box baud rate is 256000. Hardware UART required.
+  # If you change the LD2410's `baud_rate` select entity, this MUST
+  # match and the firmware must be reinstalled with the new UART baud.
+  baud_rate: ${ld2410_baud}
+  parity: NONE
+  stop_bits: 1
+
+# =====================================================================
+# Upstream LD2410 component (native in ESPHome since 2023-11)
+# =====================================================================
+ld2410:
+  id: ld2410_hub
+
+# =====================================================================
+# Binary presence channels
+# =====================================================================
+binary_sensor:
+  # Two independent presence channels:
+  # - has_target: moving OR still target detected
+  # - has_moving_target: only moving (lower false-positive rate for
+  #   "is anyone home right now" use cases)
+  - platform: ld2410
+    has_target:
+      name: Presence
+      device_class: occupancy
+      # Hysteresis: stay on for 5 s after the radar goes quiet. Helps
+      # with still-presence dropouts. The LD2410 default `settle: 1s`
+      # filter is overridden by the explicit filter list below.
+      filters:
+        - delayed_off: 5s
+  - platform: ld2410
+    has_moving_target:
+      name: Moving presence
+      device_class: motion
+      filters:
+        - delayed_off: 5s
+  - platform: ld2410
+    has_still_target:
+      name: Still presence
+      device_class: occupancy
+      filters:
+        - delayed_off: 5s
+
+# =====================================================================
+# Distances + energies (always available, no engineering mode needed)
+# =====================================================================
+sensor:
+  - platform: ld2410
+    moving_distance:
+      name: Moving distance
+      unit_of_measurement: cm
+      accuracy_decimals: 0
+    still_distance:
+      name: Still distance
+      unit_of_measurement: cm
+      accuracy_decimals: 0
+    detection_distance:
+      name: Detection distance
+      unit_of_measurement: cm
+      accuracy_decimals: 0
+    moving_energy:
+      name: Moving energy
+      unit_of_measurement: "%"
+      accuracy_decimals: 0
+    still_energy:
+      name: Still energy
+      unit_of_measurement: "%"
+      accuracy_decimals: 0
+  # Per-gate energies — only available in engineering mode (auto-off
+  # after 5 min per Hi-Link spec). Switch on via the Engineering mode
+  # switch below before reading.
+  - platform: ld2410
+    g0:
+      move_energy:
+        name: Gate 0 move energy
+      still_energy:
+        name: Gate 0 still energy
+    g1:
+      move_energy:
+        name: Gate 1 move energy
+      still_energy:
+        name: Gate 1 still energy
+    g2:
+      move_energy:
+        name: Gate 2 move energy
+      still_energy:
+        name: Gate 2 still energy
+    g3:
+      move_energy:
+        name: Gate 3 move energy
+      still_energy:
+        name: Gate 3 still energy
+    g4:
+      move_energy:
+        name: Gate 4 move energy
+      still_energy:
+        name: Gate 4 still energy
+    g5:
+      move_energy:
+        name: Gate 5 move energy
+      still_energy:
+        name: Gate 5 still energy
+    g6:
+      move_energy:
+        name: Gate 6 move energy
+      still_energy:
+        name: Gate 6 still energy
+    g7:
+      move_energy:
+        name: Gate 7 move energy
+      still_energy:
+        name: Gate 7 still energy
+    g8:
+      move_energy:
+        name: Gate 8 move energy
+      still_energy:
+        name: Gate 8 still energy
+
+text_sensor:
+  - platform: ld2410
+    version:
+      name: Firmware version
+  - platform: ld2410
+    mac_address:
+      name: LD2410 MAC
+
+# =====================================================================
+# Switches — restart + engineering mode (5 min auto-off per Hi-Link)
+# =====================================================================
+switch:
+  - platform: restart
+    name: Restart
+  - platform: ld2410
+    engineering_mode:
+      name: Engineering mode
+      # Engineering mode auto-disables after 5 minutes (Hi-Link
+      # firmware spec) so per-gate energy sensors go to `unknown` in
+      # normal use. Re-enable from openHAB for per-gate tuning.
+
+# =====================================================================
+# Selects — distance_resolution, baud_rate, light_function, out_pin_level
+# =====================================================================
+select:
+  - platform: ld2410
+    distance_resolution:
+      name: Distance resolution
+    baud_rate:
+      name: UART baud rate
+      # Changing this requires a reinstall with the matching
+      # `uart.baud_rate:` above; ESPHome shows a warning.
+    light_function:
+      name: Light function
+    out_pin_level:
+      name: OUT pin level
+
+# =====================================================================
+# Number — max_move/still_distance_gate, timeout, light_threshold,
+#          per-gate move/still thresholds (g0..g8)
+# =====================================================================
+number:
+  - platform: ld2410
+    max_move_distance_gate:
+      name: Max move distance gate
+    max_still_distance_gate:
+      name: Max still distance gate
+    timeout:
+      name: None duration
+    light_threshold:
+      name: Light threshold
+    g0:
+      move_threshold:
+        name: Gate 0 move threshold
+      still_threshold:
+        name: Gate 0 still threshold
+    g1:
+      move_threshold:
+        name: Gate 1 move threshold
+      still_threshold:
+        name: Gate 1 still threshold
+    g2:
+      move_threshold:
+        name: Gate 2 move threshold
+      still_threshold:
+        name: Gate 2 still threshold
+    g3:
+      move_threshold:
+        name: Gate 3 move threshold
+      still_threshold:
+        name: Gate 3 still threshold
+    g4:
+      move_threshold:
+        name: Gate 4 move threshold
+      still_threshold:
+        name: Gate 4 still threshold
+    g5:
+      move_threshold:
+        name: Gate 5 move threshold
+      still_threshold:
+        name: Gate 5 still threshold
+    g6:
+      move_threshold:
+        name: Gate 6 move threshold
+      still_threshold:
+        name: Gate 6 still threshold
+    g7:
+      move_threshold:
+        name: Gate 7 move threshold
+      still_threshold:
+        name: Gate 7 still threshold
+    g8:
+      move_threshold:
+        name: Gate 8 move threshold
+      still_threshold:
+        name: Gate 8 still threshold
+
+# =====================================================================
+# Buttons — restart_module, factory_reset, query_params
+# =====================================================================
+button:
+  - platform: ld2410
+    restart:
+      name: Restart module
+    factory_reset:
+      name: Factory reset
+    query_params:
+      # In ESPHome 2026.9.1 the schema key is `query_params`
+      # (CONF_QUERY_PARAMS), NOT `query`. Verified against
+      # esphome/esphome@2026.9.1
+      # esphome/components/ld2410/button/__init__.py.
+      name: Query current params

@@ -185,7 +185,14 @@ sitemap radar label="Radar presence" {
 
 ## Calibration
 
-The v1.1.0 LD2410 firmware does its own auto-calibration: every
+The calibration procedure depends on which radar module is wired
+in. Set `substitutions.radar_type` in `firmware/<node>.yaml` to
+match the hardware (`ld2410` or `ld2420`); the v1.2.0 dispatcher
+picks the right calibration workflow automatically.
+
+### LD2410 / LD2410B / LD2410C (v1.1.0+)
+
+The LD2410 firmware does its own auto-calibration: every
 `set_*` (timeout, max_move_distance_gate, per-gate move/still
 thresholds, etc.) is persisted to the LD2410 EEPROM
 automatically. There is no separate "Apply config" button.
@@ -211,6 +218,30 @@ For a typical 6 m × 4 m room on wall mounting:
   detection; lower for faster off-response, higher for still-presence
   reliability)
 
+### LD2420 (v1.0.0 + v1.2.0)
+
+The LD2420 firmware requires a manual calibration cycle via the
+`Apply config` button. The `set_*` number entities are
+**not** persisted to the LD2420 EEPROM until you press the
+button.
+
+1. Set `Operating mode` to **Calibrate** through the openHAB
+   Thing or the ESPHome device page.
+2. Leave the room empty for ≥ 30 s.
+3. Press the `Apply config` button. The LD2420 computes
+   per-gate noise-floor thresholds and writes them to flash.
+   It returns to Normal mode automatically.
+
+For best results with a 6 m room on wall mounting:
+- `Max gate distance: 9` (≈ 6.3 m physical)
+- `Min gate distance: 0`
+- `Presence timeout: 30s` is a reasonable default; raise it
+  for still-presence reliability.
+
+The v1.0.0 firmware on the GitHub Releases page uses this same
+workflow; the v1.2.0 LD2420 build (loaded by the dispatcher
+when `radar_type: ld2420`) is functionally identical to v1.0.0.
+
 ---
 
 ## Project layout
@@ -218,7 +249,13 @@ For a typical 6 m × 4 m room on wall mounting:
 ```
 .
 ├── firmware/
-│   ├── radar.yaml              ESPHome configuration for the D1 mini + LD2410
+│   ├── _common.yaml.include    Platform-level blocks (wifi/api/ota/logger/esphome)
+│   │                             Shared by both LD2410 and LD2420 builds (BL-07)
+│   ├── radar_ld2410.yaml       LD2410-specific blocks (uart, ld2410:, 9 gates)
+│   ├── radar_ld2420.yaml       LD2420-specific blocks (external_components,
+│   │                             uart, ld2420:, 16 gates via local listener)
+│   ├── radar.yaml                Per-node template (substitutions + packages:)
+│   │                             Cloned by `scripts/new_node.sh` for each node
 │   └── secrets.yaml.example      Template — copy to secrets.yaml and fill in
 ├── components/ld2420_energy/     Local ESPHome component: 16 gate-energy sensors
 │   ├── __init__.py
@@ -228,18 +265,55 @@ For a typical 6 m × 4 m room on wall mounting:
 ├── docs/
 │   ├── openhab.md                Detailed openHAB thing / item / rules examples
 │   ├── hardware.md               Wiring diagram, photos, BOM
-│   └── protocol.md               LD2420 UART frame reference (V2.x protocol)
+│   ├── protocol.md               LD2420 UART frame reference (V2.x protocol)
+│   ├── RELEASE_NOTES_v1.0.0.md   v1.0.0 (LD2420-only) release notes
+│   ├── RELEASE_NOTES_v1.1.0.md   v1.1.0 (LD2410-only) release notes
+│   └── RELEASE_NOTES_v1.2.0.md   v1.2.0 (dual-radar dispatcher) release notes
 ├── scripts/
 │   ├── clean.sh                  Wipe the toolchain cache so a stale
 │   │                             toolchain-xtensa@3.x cannot leak into the next build
 │   ├── new_node.sh               Clone radar.yaml for a 2nd / 3rd / 4th node
+│   │                             Usage: scripts/new_node.sh <name> [radar_type]
 │   └── preflight.py              Smoke-check before `esphome run` (pinned versions, syntax)
-├── RELEASE_CHECKLIST.md          R1B Backlog, build env snapshot, pre-release gate
+├── RELEASE_CHECKLIST.md          R1B Backlog (BL-01..BL-07), build env snapshot, pre-release gate
 ├── .github/workflows/
 │   └── lint.yaml                 yaml-lint on PR
 ├── LICENSE                       MIT
 └── README.md                     (this file)
 ```
+
+### Radar type selection (BL-07, v1.2.0+)
+
+The `substitutions.radar_type` key in `firmware/radar.yaml` (and
+every per-node YAML cloned from it) selects which radar-specific
+block to include. Valid values:
+
+- `ld2410` — Hi-Link LD2410 / LD2410B / LD2410C, 256000 baud, 9
+  gates, engineering mode, every `set_*` auto-persists to EEPROM.
+  Default in `scripts/new_node.sh`.
+- `ld2420` — Hi-Link LD2420, 115200 baud, 16 gates via the local
+  `components/ld2420_energy/` listener, `apply_config` button
+  required to persist changes.
+
+To create a new node, run:
+
+```bash
+# LD2410 (default)
+scripts/new_node.sh bedroom
+# LD2420
+scripts/new_node.sh kitchen ld2420
+```
+
+The script generates `firmware/<name>.yaml` from the template,
+swaps the substitutions, generates a per-node API encryption
+key (BL-06), and appends it to `firmware/secrets.yaml`. The
+`packages:` block in the per-node YAML is patched to reference
+the matching `radar_ld<type>.yaml` include.
+
+The v1.0.0 LD2420 firmware is still available on the GitHub
+Releases page; the v1.1.0 LD2410 firmware is also unchanged.
+The `main` branch carries the v1.2.0 dispatcher that builds for
+either radar module.
 
 ---
 

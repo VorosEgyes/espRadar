@@ -1,362 +1,58 @@
+# Per-node espRadar v1.2.0 firmware (BL-07 dual-radar dispatcher).
+#
+# This file is the **per-node entry point**. It contains only the
+# per-node substitutions (device_name, friendly_name, radar_type)
+# and the `packages:` block that pulls in the platform-level
+# (`_common.yaml.include`) and radar-specific
+# (`radar_ld<type>.yaml`) blocks. The full schema is in those
+# two include files.
+#
+# The `radar_type` substitution selects which radar-specific block
+# to include. Valid values: `ld2410` (Hi-Link LD2410 / LD2410B /
+# LD2410C, 256000 baud) and `ld2420` (Hi-Link LD2420, 115200 baud,
+# 16 gates via the local `components/ld2420_energy/` listener).
+# `scripts/preflight.py check_4_radar_yaml` validates the value and
+# the schema consistency (across the per-node YAML and the
+# include-olt blocks).
+#
+# To create a new node, run `scripts/new_node.sh <name> [radar_type]`.
+# The script generates `firmware/<name>.yaml` from this template,
+# swaps the substitutions, generates a per-node API encryption key
+# (BL-06), and appends it to `firmware/secrets.yaml`.
+#
+# Wiring (BL-05): both radar modules wire TX → D7 (GPIO13), RX → D8
+# (GPIO15), GND → GND. The VCC pin is radar-specific:
+#   - LD2410: VCC → D1 mini **5V** rail (NOT 3V3 — see BL-05)
+#   - LD2420: VCC → D1 mini 3V3 rail (the 16-gate module runs on 3V3)
+
 substitutions:
   device_name: radar
   friendly_name: Radar presence
-  # Logs on UART0 — must be 0 because D7/D8 (GPIO13/15) is the LD2410 UART.
+  # BL-07: every per-node YAML must declare its radar type. Set to
+  # `ld2410` or `ld2420` to dispatch the schema check in
+  # scripts/preflight.py check_4_radar_yaml.
+  radar_type: ld2410
+  # Logs on UART0 — must be 0 because D7/D8 (GPIO13/15) is the radar
+  # UART. Setting this to anything non-zero would either collide
+  # with the radar (UART0 mid-protocol) or break OTA (the bootloader
+  # needs GPIO1/GPIO3 free for handshake).
   log_baud: "0"
-  # LD2410 out-of-the-box baud rate is 256000. Hardware UART required.
+  # Radar baud rate. The !included radar block references this
+  # substitution; the actual value depends on the radar type:
+  #   - ld2410: 256000 (out-of-the-box)
+  #   - ld2420: 115200 (firmware >= v1.5.3)
+  # The radar block only reads the substitution it cares about; the
+  # other one is ignored.
   ld2410_baud: "256000"
-  # The LD2410 reports per-gate energy in `engineering_mode` only.
-  # Engineering mode auto-disables after 5 minutes (per Hi-Link spec).
-  # The 9 gates (g0..g8) cover 0..6 m at 0.75 m resolution.
-  # Room-specific tuning (timeout, max_move_distance_gate,
-  # max_still_distance_gate, per-gate move/still_threshold) is set
-  # after the first boot through openHAB and persisted automatically
-  # to LD2410 EEPROM on every set. The substitutions here are only
-  # for platform-level constants.
-  #
-  # HARDWARE: the LD2410 must be powered from the D1 mini's **5V**
-  # rail, NOT 3V3 (BL-05). Some Hi-Link LD2410 batches (and most
-  # clone modules) require 5 V for reliable UART signal levels;
-  # on 3V3 the UART may appear alive on power-up but no
-  # communication happens (`Firmware version` text_sensor stays
-  # `NA`, all per-gate energy sensors stay `NA`, `Detection
-  # distance` stays `NA`). The D1 mini 5V rail is fed directly
-  # from the USB 5V input through the on-board regulator's
-  # bypass; it can source ~400 mA which is plenty for the
-  # LD2410's 50 mA average / 100 mA peak. NEVER connect LD2410
-  # VCC to the D1 mini 3V3 rail — the symptom is the same as a
-  # wiring fault (TX/RX reversed) and is hard to diagnose
-  # without first checking the `LD2410 MAC` text_sensor.
+  ld2420_baud: "115200"
 
-esphome:
-  name: ${device_name}
-  friendly_name: ${friendly_name}
-  min_version: 2025.11.0
-  # BL-01b: toolchain-xtensa@3.x (gcc 10.3.0) workaround.
-  #
-  # The pin to espressif8266@2.6.3 (gcc 5.2) is structurally
-  # incompatible with ESPHome 2026.9.1, which hard-codes
-  # `cg.set_cpp_standard("gnu++20")` and rejects any framework
-  # < 3.0.0 (esphome/esphome@2026.9.1
-  # esphome/components/esp8266/__init__.py:_arduino_check_versions).
-  # gcc 5.2 does not understand `-std=gnu++20` (rejected as
-  # "unrecognized command line option"). The 4.x toolchain (gcc
-  # 10.3.0) supports gnu++20, but its libstdc++ headers are
-  # inconsistent with `-std=gnu++20` when included via
-  # `<functional>` (the cascade surfaces as "'std::size_t' has
-  # not been declared" in <hashtable_policy.h> / <tuple>).
-  #
-  # The cascade happens because the toolchain's
-  # libstdc++10 <tuple> and <hashtable_policy.h> assume `std::size_t`
-  # is already in scope by the time they are first parsed, but
-  # `<cstddef>` is not brought in early enough by ESPHome's
-  # `component.h` → `<functional>` include chain. Pre-including
-  # `<stddef.h>` via `-include stddef.h` puts `std::size_t` /
-  # `std::ptrdiff_t` in scope before any toolchain header is
-  # parsed.
-  #
-  # NB: `-include stddef.h` (NOT `cstddef`). The toolchain also
-  # builds `.c` files (e.g. ESPAsyncTCP/tcp_axtls.c) which only
-  # have the C standard library available; `-include cstddef` would
-  # fail with "cstddef: No such file or directory" on those TUs.
-  # `<stddef.h>` is valid in both C and C++ and declares the same
-  # `size_t` / `ptrdiff_t` types in C++ (in `std::` as well).
-  #
-  # Pre-flight guard: scripts/preflight.py check_6 (renamed
-  # check_6_cstddef_workaround, but it really checks for
-  # `-include stddef.h`) verifies this flag is present.
-  platformio_options:
-    build_flags:
-      - -include stddef.h
-  on_boot:
-    priority: 600
-    then:
-      - logger.log:
-          level: INFO
-          format: "ESPHome booted — LD2410 will report presence on openHAB object"
-          tag: ld2410
-
-esp8266:
-  board: d1_mini
-  framework:
-    version: recommended
-
-logger:
-  level: INFO
-  baud_rate: ${log_baud}
-
-# Native API for openHAB via seime/openhab-esphome binding.
-# The encryption key is per-node (BL-06): sharing a single key
-# across multiple nodes causes "handshake failure" / "CONNECTION_CLOSED"
-# in the openHAB log. The key lives in firmware/secrets.yaml as
-# `api_encryption_key_radar:` and is generated by `scripts/new_node.sh
-# radar` (or manually with `python -c "import os,base64;
-# print(base64.b64encode(os.urandom(32)).decode())"`).
-api:
-  encryption:
-    key: !secret api_encryption_key_radar
-  reboot_timeout: 15min
-
-ota:
-  # ESPHome 2026.9.1 enables OTA password authentication by
-  # default. The shared `!secret ota_password` lives in
-  # firmware/secrets.yaml. The v1.0.0 firmware used api-encryption-key
-  # authentication and no separate OTA password — the v1.1.0 firmware
-  # requires both (the OTA password is the only thing that
-  # authenticates uploads to the D1 mini after the encryption key
-  # change in BL-06).
-  - platform: esphome
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  power_save_mode: none
-  fast_connect: true
-  reboot_timeout: 5min
-  # DHCP — host reservation by MAC on the router is the recommended way to
-  # give each node a stable IP. See README → "Network setup".
-  ap:
-    # SSID limit is 32 — friendly_name is too verbose; use the short device_name.
-    ssid: "${device_name} Fallback"
-    password: !secret fallback_ap_password
-
-captive_portal:
-
-web_server:
-  port: 80
-
-# Hardware UART on D7/D8 (GPIO13/GPIO15) — kept off UART0.
-# The LD2410 ESPHome component is upstream-native (no local
-# component needed). The legacy `components/ld2420_energy/`
-# directory is kept in the repo for the v1.0.0 LD2420 build but
-# is NOT loaded here. If a node is ever flashed with an LD2420
-# module, swap to the v1.0.0 firmware (or uncomment the
-# `external_components:` block below + switch the `ld2410:` /
-# `ld2420:` / `sensor - platform:` blocks back to their v1.0.0
-# values).
-uart:
-  id: ld2410_uart
-  tx_pin: GPIO15
-  rx_pin: GPIO13
-  baud_rate: ${ld2410_baud}
-  parity: NONE
-  stop_bits: 1
-
-# Upstream LD2410 component — supports LD2410 / LD2410B / LD2410C
-# (the C variant also has BLE, which we do not use).
-# The id is referenced from the binary_sensor / sensor / number
-# / select / button / switch blocks below.
-ld2410:
-  id: ld2410_hub
-
-binary_sensor:
-  # Two independent presence channels:
-  # - has_target: moving OR still target detected
-  # - has_moving_target: only moving (lower false-positive rate for
-  #   "is anyone home right now" use cases)
-  - platform: ld2410
-    has_target:
-      name: Presence
-      device_class: occupancy
-      # Hysteresis: stay on for 5 s after the radar goes quiet. Helps
-      # with still-presence dropouts. The LD2410 default `settle: 1s`
-      # filter is overridden by the explicit filter list below.
-      filters:
-        - delayed_off: 5s
-  - platform: ld2410
-    has_moving_target:
-      name: Moving presence
-      device_class: motion
-      filters:
-        - delayed_off: 5s
-  - platform: ld2410
-    has_still_target:
-      name: Still presence
-      device_class: occupancy
-      filters:
-        - delayed_off: 5s
-
-sensor:
-  # Core distances + energies (always available, no engineering mode).
-  - platform: ld2410
-    moving_distance:
-      name: Moving distance
-      unit_of_measurement: cm
-      accuracy_decimals: 0
-    still_distance:
-      name: Still distance
-      unit_of_measurement: cm
-      accuracy_decimals: 0
-    detection_distance:
-      name: Detection distance
-      unit_of_measurement: cm
-      accuracy_decimals: 0
-    moving_energy:
-      name: Moving energy
-      unit_of_measurement: "%"
-      accuracy_decimals: 0
-    still_energy:
-      name: Still energy
-      unit_of_measurement: "%"
-      accuracy_decimals: 0
-  # Per-gate energies (engineering mode only — sensor reports `unknown`
-  # when engineering mode is off). The 9 gates cover 0..6 m at 0.75 m
-  # resolution. Engineering mode auto-disables after 5 min (Hi-Link
-  # firmware spec) so the per-gate sensors go to `unknown` in normal
-  # use; switch `engineering_mode` on via openHAB for per-gate tuning.
-  - platform: ld2410
-    g0:
-      move_energy:
-        name: Gate 0 move energy
-      still_energy:
-        name: Gate 0 still energy
-    g1:
-      move_energy:
-        name: Gate 1 move energy
-      still_energy:
-        name: Gate 1 still energy
-    g2:
-      move_energy:
-        name: Gate 2 move energy
-      still_energy:
-        name: Gate 2 still energy
-    g3:
-      move_energy:
-        name: Gate 3 move energy
-      still_energy:
-        name: Gate 3 still energy
-    g4:
-      move_energy:
-        name: Gate 4 move energy
-      still_energy:
-        name: Gate 4 still energy
-    g5:
-      move_energy:
-        name: Gate 5 move energy
-      still_energy:
-        name: Gate 5 still energy
-    g6:
-      move_energy:
-        name: Gate 6 move energy
-      still_energy:
-        name: Gate 6 still energy
-    g7:
-      move_energy:
-        name: Gate 7 move energy
-      still_energy:
-        name: Gate 7 still energy
-    g8:
-      move_energy:
-        name: Gate 8 move energy
-      still_energy:
-        name: Gate 8 still energy
-
-text_sensor:
-  - platform: ld2410
-    version:
-      name: Firmware version
-  - platform: ld2410
-    mac_address:
-      name: LD2410 MAC
-
-# (LED diagnostics removed — LEDC is no longer a YAML section in
-# ESPHome 2025.11+; it lives on the `output:` platform now. Presence
-# state is already exposed via openHAB, so an on-board LED is not
-# needed for this project.)
-
-switch:
-  - platform: restart
-    name: Restart
-  - platform: ld2410
-    engineering_mode:
-      name: Engineering mode
-      # Engineering mode auto-disables after 5 minutes (Hi-Link
-      # firmware spec) so per-gate energy sensors go to `unknown`
-      # in normal use. Re-enable from openHAB for per-gate tuning.
-
-# Tuning UI surfaces — every entity ends up in openHAB through the
-# ESPHome binding. LD2410 persists every set_* to its EEPROM
-# automatically; there is no separate `apply_config` button
-# (unlike the LD2420 v1.0.0 firmware).
-select:
-  - platform: ld2410
-    distance_resolution:
-      name: Distance resolution
-    baud_rate:
-      name: UART baud rate
-      # Changing this requires a reinstall with the matching
-      # `uart.baud_rate:` above; ESPHome shows a warning.
-    light_function:
-      name: Light function
-    out_pin_level:
-      name: OUT pin level
-
-number:
-  - platform: ld2410
-    max_move_distance_gate:
-      name: Max move distance gate
-    max_still_distance_gate:
-      name: Max still distance gate
-    timeout:
-      name: None duration
-    light_threshold:
-      name: Light threshold
-    g0:
-      move_threshold:
-        name: Gate 0 move threshold
-      still_threshold:
-        name: Gate 0 still threshold
-    g1:
-      move_threshold:
-        name: Gate 1 move threshold
-      still_threshold:
-        name: Gate 1 still threshold
-    g2:
-      move_threshold:
-        name: Gate 2 move threshold
-      still_threshold:
-        name: Gate 2 still threshold
-    g3:
-      move_threshold:
-        name: Gate 3 move threshold
-      still_threshold:
-        name: Gate 3 still threshold
-    g4:
-      move_threshold:
-        name: Gate 4 move threshold
-      still_threshold:
-        name: Gate 4 still threshold
-    g5:
-      move_threshold:
-        name: Gate 5 move threshold
-      still_threshold:
-        name: Gate 5 still threshold
-    g6:
-      move_threshold:
-        name: Gate 6 move threshold
-      still_threshold:
-        name: Gate 6 still threshold
-    g7:
-      move_threshold:
-        name: Gate 7 move threshold
-      still_threshold:
-        name: Gate 7 still threshold
-    g8:
-      move_threshold:
-        name: Gate 8 move threshold
-      still_threshold:
-        name: Gate 8 still threshold
-
-button:
-  - platform: ld2410
-    restart:
-      name: Restart module
-    factory_reset:
-      name: Factory reset
-    query_params:
-      # In ESPHome 2026.9.1 the schema key is `query_params`
-      # (CONF_QUERY_PARAMS), NOT `query` (the doksi page shows
-      # `query` which is misleading). Verified against
-      # esphome/esphome@2026.9.1
-      # esphome/components/ld2410/button/__init__.py.
-      name: Query current params
+# Pull in the platform-level and radar-specific blocks via ESPHome's
+# `packages:` system. The order matters: `_common.yaml.include`
+# defines the `esphome:`, `esp8266:`, `logger:`, `api:`, `ota:`,
+# `wifi:`, `captive_portal:`, `web_server:` sections, and the
+# radar-specific file appends the `uart:`, `ld2410:` (or `ld2420:`),
+# `binary_sensor:`, `sensor:`, `text_sensor:`, `switch:`, `select:`,
+# `number:`, `button:` sections.
+packages:
+  common: !include _common.yaml.include
+  radar: !include __RADAR_INCLUDE__

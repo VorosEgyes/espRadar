@@ -230,6 +230,113 @@ parses `firmware/radar.yaml` and verifies that every
 check runs after `check_2_no_placeholders` so the substitution
 references are guaranteed to resolve before `esphome run`.
 
+v1.2.0 (BL-07): the check is also run on the `!include`-resolved
+YAML, so `!secret api_encryption_key_${device_name}` references
+in `_common.yaml.include` are caught too. Per-node YAMLs
+(`firmware/<name>.yaml`) are walked instead of the single
+`MAIN_YAML` (v1.1.0).
+
+### BL-07 — Dual-radar dispatcher (LD2410 ↔ LD2420) (OPEN, target v1.2.0)
+
+**Initial situation (v1.0.0 / v1.1.0).** The repo carried two
+separate, structurally different firmware files:
+- v1.0.0: `firmware/livingroom.yaml` (LD2420, 115200 baud, 16
+  gates, `apply_config` button)
+- v1.1.0: `firmware/radar.yaml` (LD2410, 256000 baud, 9 gates,
+  engineering mode, every `set_*` auto-persists)
+
+A node wired to an LD2420 could not use the v1.1.0 firmware and
+vice versa; the only way to switch radar modules was to check out
+the other release tag and reflash. BL-05 (5V supply) and the
+upstream `ld2410:` component's introduction made the LD2410 the
+default, but a few nodes are still wired to the older LD2420
+modules and the dispatcher was missing.
+
+**Refactor (BL-07, target v1.2.0).** The v1.1.0 firmware was
+restructured into a `packages:`-based dispatcher:
+
+- `firmware/_common.yaml.include` — platform-level blocks
+  (esphome, esp8266, logger, api, ota, wifi, captive_portal,
+  web_server, BL-01b `platformio_options.build_flags`).
+- `firmware/radar_ld2410.yaml` — LD2410-specific blocks (uart
+  at 256000, `ld2410:` hub, all 9-gate binary_sensor / sensor /
+  text_sensor / switch / select / number / button entities).
+- `firmware/radar_ld2420.yaml` — LD2420-specific blocks
+  (external_components for the `ld2420_energy` listener, uart
+  at 115200, `ld2420:` hub, 16-gate binary_sensor / sensor /
+  text_sensor / switch / select / number / button entities).
+- `firmware/radar.yaml` — per-node template. The substitutions
+  (`device_name`, `friendly_name`, `radar_type`, baud rate
+  defaults) and a `packages:` block that `!include`s the common
+  file and the matching radar-specific file. The
+  `__RADAR_INCLUDE__` placeholder is substituted by
+  `scripts/new_node.sh` based on the `radar_type`.
+
+**Why two include files, not a single conditional.** The two
+radar modules use DIFFERENT upstream ESPHome components
+(`ld2410:` vs `ld2420:`), DIFFERENT baud rates, DIFFERENT entity
+schemas (9 gates × 2 vs 16 gates × 1), and DIFFERENT
+persistence models (every set_* auto-persists vs an
+`apply_config` button). A single conditional block would need
+two parallel definitions for every shared entity name, and
+silent schema errors would slip through. Maintaining two
+self-contained files makes the wrong-platform build a hard
+preflight failure instead of a silent compile.
+
+**Preflight impact.** The v1.1.0 preflight assumed a single
+`MAIN_YAML` (`firmware/radar.yaml`) and a single radar type
+(LD2410). The v1.2.0 preflight:
+
+- `MAIN_YAML` → `_per_node_yamls()` (every `firmware/*.yaml`
+  except templates and the example/secrets).
+- `check_4_ld2410_yaml` → `check_4_radar_yaml`, dispatched on
+  `substitutions.radar_type`. Two schema check functions
+  (`_check_ld2410_text`, `_check_ld2420_text`) reject mixed
+  builds (e.g. `radar_type: ld2410` with an `ld2420:` block).
+- The preflight walks the per-node YAML's `!include` markers
+  via a small `_resolve_includes` walker (cycle-guarded,
+  `vars:`-aware) and applies the schema checks to the
+  resolved YAML. This means a build whose per-node YAML
+  references the wrong radar include (e.g. `radar_type: ld2410`
+  but `radar: !include radar_ld2420.yaml`) is caught at
+  preflight time, not at the first `esphome run`.
+- `check_6` / `check_6b` (BL-01b workaround) run only on
+  `_common.yaml.include` (where the workaround lives), not on
+  the per-node YAMLs (which would not have the flag in their
+  text because they pull it in via `!include`).
+
+**`new_node.sh` impact.** The script gained a
+`scripts/new_node.sh <name> [radar_type]` signature. The
+default `radar_type` is `ld2410` (the v1.1.0 default). The
+`packages:` block's `radar:` value is patched from
+`!include __RADAR_INCLUDE__` to `!include radar_<radar_type>.yaml`.
+The reserved-name check now also rejects `ld2420` and
+`radar_type`.
+
+**Migration from v1.1.0 to v1.2.0.** No code migration is
+required for existing v1.1.0 nodes: the per-node YAML
+(`firmware/radar.yaml`) was extended with a `radar_type: ld2410`
+substitution and the `packages:` block, but the resolved
+schema is identical to the v1.1.0 in-line YAML. Existing
+`bedroom.yaml` / `kitchen.yaml` / etc. files can be left as
+they are; the preflight accepts them. New nodes use the
+`packages:` template via `scripts/new_node.sh`.
+
+**Backwards compatibility for the v1.0.0 LD2420 firmware.**
+The `components/ld2420_energy/` directory stays in the repo
+(unchanged, see `check_5`). The v1.0.0 firmware can still be
+re-flashed by `git checkout v1.0.0 -- firmware/livingroom.yaml
+firmware/radar.yaml components/ld2420_energy/`; the v1.0.0
+release tag and SHA-256 are unchanged.
+
+**Validation.** `scripts/preflight.py` runs to PRE-FLIGHT OK on
+at least one LD2410 build (`bedroom`) and one LD2420 build
+(`kitchen`) before tagging v1.2.0. The build artifact SHA-256
+for each radar type is recorded in the Build artifact table
+(below).
+
+### BL-02 — Python binding: `register_listener` (not `add_listener`) (CLOSED 2026-10-02)
+
 **Files changed (BL-06).**
 - `firmware/secrets.yaml.example` — rewritten with per-node
   key comment block.

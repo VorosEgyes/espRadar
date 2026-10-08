@@ -1,0 +1,171 @@
+# LD2420 radar block — !include'd by per-node firmware YAMLs that target
+# the Hi-Link HLK-LD2420 module.
+#
+# This block contains EVERY radar-specific entry: external_components
+# (for the per-gate energy listener), UART, the upstream `ld2420:`
+# component, binary_sensor / sensor / text_sensor / switch / select /
+# number / button entities. Pair it with `firmware/_common.yaml.include`
+# in a per-node YAML.
+#
+# NB: the LD2420 firmware (≥ v1.5.3) uses 115200 baud. The v1.0.0
+# firmware used the local `components/ld2420_energy/` listener because
+# the upstream `ld2420` did not yet expose per-gate energy as native
+# sensors — that listener is still loaded here.
+#
+# Persistence model: LD2420 does NOT auto-persist on every set_* like
+# the LD2410 does. There is an explicit `apply_config` button that
+# writes the current set_* values to LD2420 EEPROM in one batch.
+
+# =====================================================================
+# External components — load the local ld2420_energy listener
+# =====================================================================
+# The parent `LD2420Component` calls
+# `LD2420Listener::on_energy(sensor_energy, 16)` after every parsed
+# energy frame (Normal mode, firmware >= v1.5.4), about 10 Hz. The
+# listener forwards each of the 16 gate-energy values to its own
+# sensor::Sensor entity. No upstream fork required.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [ld2420_energy]
+
+# =====================================================================
+# UART
+# =====================================================================
+# Hardware UART on D7/D8 (GPIO13/GPIO15) — kept off UART0 so the logger
+# can use it.
+uart:
+  id: ld2420_uart
+  tx_pin: GPIO15
+  rx_pin: GPIO13
+  # LD2420 firmware ≥ v1.5.3 uses 115200 baud.
+  baud_rate: ${ld2420_baud}
+  parity: NONE
+  stop_bits: 1
+
+# =====================================================================
+# Upstream LD2420 component (native in ESPHome since 2023-11)
+# =====================================================================
+ld2420:
+  id: ld2420_hub
+
+# =====================================================================
+# Binary presence channels
+# =====================================================================
+binary_sensor:
+  - platform: ld2420
+    has_target:
+      name: Presence
+      device_class: occupancy
+      # Hysteresis: stay on for 5 s after the radar goes quiet, regardless
+      # of presence_timeout above. Helps with still-presence dropouts.
+      filters:
+        - delayed_off: 5s
+
+# =====================================================================
+# Distances + 16 per-gate energy values (via the local listener)
+# =====================================================================
+sensor:
+  - platform: ld2420
+    moving_distance:
+      name: Moving distance
+      unit_of_measurement: cm
+      accuracy_decimals: 1
+      filters:
+        - clamp:
+            min_value: 0
+            max_value: 800
+            ignore_out_of_range: true
+  - platform: ld2420_energy
+    ld2420_id: ld2420_hub
+    gate_energy_0:
+      name: Gate 0 energy
+    gate_energy_1:
+      name: Gate 1 energy
+    gate_energy_2:
+      name: Gate 2 energy
+    gate_energy_3:
+      name: Gate 3 energy
+    gate_energy_4:
+      name: Gate 4 energy
+    gate_energy_5:
+      name: Gate 5 energy
+    gate_energy_6:
+      name: Gate 6 energy
+    gate_energy_7:
+      name: Gate 7 energy
+    gate_energy_8:
+      name: Gate 8 energy
+    gate_energy_9:
+      name: Gate 9 energy
+    gate_energy_10:
+      name: Gate 10 energy
+    gate_energy_11:
+      name: Gate 11 energy
+    gate_energy_12:
+      name: Gate 12 energy
+    gate_energy_13:
+      name: Gate 13 energy
+    gate_energy_14:
+      name: Gate 14 energy
+    gate_energy_15:
+      name: Gate 15 energy
+
+text_sensor:
+  - platform: ld2420
+    fw_version:
+      name: Firmware version
+
+# =====================================================================
+# Switches — restart
+# =====================================================================
+switch:
+  - platform: restart
+    name: Restart
+
+# =====================================================================
+# Selects — operating_mode (Normal / Calibrate / Simple)
+# =====================================================================
+select:
+  - platform: ld2420
+    operating_mode:
+      name: Operating mode
+
+# =====================================================================
+# Number — presence_timeout / min/max_gate_distance / gate_select /
+#          still_threshold / move_threshold
+# =====================================================================
+# 2026 ESPHome ld2420 number schema does not accept `initial_value:`
+# for presence_timeout / min_gate_distance / max_gate_distance — those
+# keys default to firmware defaults (120 s, gate 1, gate 12). Set them
+# once from openHAB after the first boot, then press the **Apply
+# config** button below to persist the values into LD2420 EEPROM.
+number:
+  - platform: ld2420
+    presence_timeout:
+      name: Presence timeout
+    min_gate_distance:
+      name: Min gate distance
+    max_gate_distance:
+      name: Max gate distance
+    gate_select:
+      name: Gate to set
+    still_threshold:
+      name: Still threshold
+    move_threshold:
+      name: Move threshold
+
+# =====================================================================
+# Buttons — apply_config / factory_reset / restart_module / revert_config
+# =====================================================================
+button:
+  - platform: ld2420
+    apply_config:
+      name: Apply config
+    factory_reset:
+      name: Factory reset
+    restart_module:
+      name: Restart module
+    revert_config:
+      name: Revert edits

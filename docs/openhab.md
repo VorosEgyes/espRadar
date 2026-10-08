@@ -151,12 +151,28 @@ mismatched `encryptionKey` (regenerate with
 `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"`
 and update both `secrets.yaml` and the `.things` file).
 
-## Items (v1.1.0 channel set)
+## Items (channel set depends on radar_type)
 
-The v1.1.0 LD2410 firmware exposes the following channels. The
-exact channel names are auto-derived from the ESPHome `name:`
-field, with whitespace replaced by underscores (e.g.
-`LD2410 MAC` → `ld2410_mac`).
+The v1.2.0 dispatcher picks the channel set based on
+`substitutions.radar_type` in the per-node YAML:
+
+- `radar_type: ld2410` — the v1.1.0 channel set (LD2410,
+  9 gates × 2, engineering mode, auto-persist). The exact
+  channel names are auto-derived from the ESPHome `name:`
+  field, with whitespace replaced by underscores (e.g.
+  `LD2410 MAC` → `ld2410_mac`).
+- `radar_type: ld2420` — the v1.0.0 channel set (LD2420,
+  16 gates × 1, operating mode, `apply_config` button
+  required to persist). Identical to the v1.0.0 firmware.
+
+The two sets are NOT compatible: a v1.1.0 sitemap referencing
+`Radar_EngineeringMode` will show `NULL` on an LD2420 node,
+and a v1.0.0 sitemap referencing `Radar_OperatingMode` will
+show `NULL` on an LD2410 node. The minimal sitemap below is
+written for the LD2410 build; an LD2420-equivalent is at the
+bottom of this document.
+
+### LD2410 / LD2410B / LD2410C (v1.1.0 channel set)
 
 ### Presence (binary sensors)
 
@@ -381,3 +397,16 @@ end
    do not exist on the LD2420). To revert a node to v1.0.0,
    see `docs/RELEASE_NOTES_v1.1.0.md` → "How to revert a node
    to v1.0.0 (LD2420 hardware)".
+
+7. **The v1.2.0 dispatcher picks the channel set from
+   `substitutions.radar_type`.** A v1.1.0 LD2410 build
+   (`radar_type: ld2410`) and a v1.2.0 LD2420 build
+   (`radar_type: ld2420`) on the same `.things` file are
+   NOT compatible. Either keep separate `.things` files for
+   LD2410 and LD2420 nodes, or use openHAB's auto-discovery
+   in the Inbox (which reads the actual channel set from the
+   device). The v1.2.0 build with `radar_type: ld2410` is
+   **channel-compatible** with v1.1.0 LD2410 nodes (the
+   resolved schema is identical); only the per-node YAML file
+   format changed (the in-line `radar.yaml` became a
+   `packages:`-based template).
