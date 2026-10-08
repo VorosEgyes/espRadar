@@ -13,10 +13,15 @@ v1.2.0 changes (BL-07, dual-radar dispatcher):
     `substitutions.radar_type` value. An LD2410 build is validated
     against the LD2410 schema; an LD2420 build against the LD2420
     schema. A mixed build (e.g. radar_type=ld2410 with an `ld2420:`
-    block) is rejected.
-  - `check_6` (BL-01b toolchain workaround) runs on every per-node
-    YAML AND on `_common.yaml.include` (the workaround lives in
-    the common file, not in the per-node file).
+    block) is rejected. The check also verifies that the
+    `packages.radar` include target matches the `radar_type` (an
+    LD2410 build with `radar: !include radar_ld2420.yaml` is
+    rejected as inconsistent).
+  - `check_6` (BL-01b toolchain workaround) runs ONLY on
+    `_common.yaml.include` (not on the per-node YAMLs, which
+    pull the workaround in via `!include`). The per-node YAMLs
+    do not contain the literal string `-include stddef.h`; the
+    workaround lives in the common include.
 
 v1.1.0 changes (kept):
   - check_2b_per_node_api_key: every per-node YAML references a
@@ -132,8 +137,17 @@ def _resolve_includes(node: object, base_dir: Path) -> object:
     mirrors the relevant subset of that behaviour for preflight:
     any mapping `{"__include__": file, "vars": ...}` is replaced
     with the parsed YAML of `base_dir / file`. Cyclic includes
-    (A includes B includes A) are caught via the `seen` set and
-    reported as a preflight failure.
+    (A includes B includes A) are caught via the per-call
+    `seen` set and reported as a preflight failure.
+
+    v1.2.0 (BL-07): the `seen` set is a function-local set
+    (not a function attribute), and a `try/finally` block
+    guarantees the set is cleared even if a `fail()` call
+    raises SystemExit. The previous implementation stored
+    `seen` as a function attribute (`_resolve_includes._seen`),
+    which leaked state across calls if a `fail()` call exited
+    mid-recursion. With the per-call set, each top-level
+    `_resolve_includes` call starts with an empty set.
 
     `vars:` overrides are applied to the included file's
     `substitutions:` block if it has one; this is a best-effort
@@ -141,19 +155,33 @@ def _resolve_includes(node: object, base_dir: Path) -> object:
     preflight does NOT enforce that the override keys exist in the
     included file's substitutions (ESPHome does that at codegen).
     """
+    seen: set[str] = set()
+    try:
+        return _resolve_includes_inner(node, base_dir, seen)
+    finally:
+        seen.clear()
+
+
+def _resolve_includes_inner(
+    node: object, base_dir: Path, seen: set[str]
+) -> object:
+    """Inner recursive worker for `_resolve_includes`.
+
+    The `seen` set is shared across the recursion depth of a
+    single top-level call. The outer `_resolve_includes` function
+    owns the set's lifetime (init + finally-clear).
+    """
     if isinstance(node, dict):
         if "__include__" in node:
             rel = str(node["__include__"])
             target = (base_dir / rel).resolve()
-            # Cycle guard: each include file is loaded at most once per
-            # top-level resolve_includes call.
             cycle_key = str(target)
-            if cycle_key in _resolve_includes._seen:  # type: ignore[attr-defined]
+            if cycle_key in seen:
                 fail(
                     f"cyclic !include detected: {rel} is included "
                     f"more than once in the same resolution path"
                 )
-            _resolve_includes._seen.add(cycle_key)  # type: ignore[attr-defined]
+            seen.add(cycle_key)
             if not target.is_file():
                 fail(
                     f"!include references missing file: {rel} "
@@ -173,22 +201,16 @@ def _resolve_includes(node: object, base_dir: Path) -> object:
                 included_sub = included.get("substitutions")
                 if isinstance(included_sub, dict):
                     included_sub.update(vars_override)
-            included = _resolve_includes(included, base_dir.parent)
-            _resolve_includes._seen.discard(cycle_key)  # type: ignore[attr-defined]
+            included = _resolve_includes_inner(included, base_dir.parent, seen)
+            seen.discard(cycle_key)
             return included
         return {
-            k: _resolve_includes(v, base_dir)
+            k: _resolve_includes_inner(v, base_dir, seen)
             for k, v in node.items()
         }
     if isinstance(node, list):
-        return [_resolve_includes(v, base_dir) for v in node]
+        return [_resolve_includes_inner(v, base_dir, seen) for v in node]
     return node
-
-
-# Initialise the cycle-guard set on the function (used as a
-# per-call context). The set is mutated by `_resolve_includes` and
-# discarded at the end of each top-level call.
-_resolve_includes._seen = set()  # type: ignore[attr-defined]
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -498,11 +520,20 @@ def _check_ld2420_text(text: str) -> list[str]:
             "LD2410-only switch; the LD2420 build uses `operating_mode:` "
             "(Normal / Calibrate / Simple) under `select:`"
         )
-    if "g0:\n      move_threshold:" in text or "g0:\n      still_threshold:" in text:
+    if re.search(
+        r"^g[0-8]:\n      (move_threshold|still_threshold):",
+        text,
+        re.MULTILINE,
+    ):
         # The LD2420 exposes per-gate thresholds through a single
         # `gate_select` number (which gate to set) plus a single
         # `move_threshold` / `still_threshold` pair. The LD2410 has
-        # g0..g8 move_threshold / still_threshold directly.
+        # g0..g8 move_threshold / still_threshold directly. The
+        # regex matches any gN (N=0..8) move/still_threshold
+        # block, so even a single stray g1: in the per-node YAML
+        # is caught (the per-node YAML should not have any
+        # per-gate blocks — the LD2420 include handles them
+        # via the gate_select + move/still_threshold pair).
         failures.append(
             "the YAML has per-gate `g0..g8` move/still_threshold "
             "blocks — that is the LD2410 schema; the LD2420 uses a "
@@ -533,6 +564,7 @@ def check_4_radar_yaml() -> None:
     can dispatch on the actual radar component (`ld2410:` vs
     `ld2420:`) rather than on the include target.
     """
+    cfg: object = None
     for node_yaml in _per_node_yamls():
         if not _HAS_YAML:
             # Without PyYAML, fall back to the raw-text check: read
@@ -613,6 +645,45 @@ def check_4_radar_yaml() -> None:
                 f"type. Set `radar_type: ld2410` or `radar_type: ld2420` "
                 f"in the `substitutions:` block at the top of the file."
             )
+        # BL-07 (v1.2.0): the `packages.radar` include target must
+        # match the declared `radar_type`. A build with
+        # `radar_type: ld2410` but `radar: !include radar_ld2420.yaml`
+        # is a wiring error: the LD2410 schema (has_target, g0..g8
+        # move/still_threshold) would be checked, but the LD2420
+        # include would be pulled in, producing a build that
+        # compiles but never reports.
+        #
+        # The `_resolve_includes` walker substitutes the include
+        # marker with the file's contents, so by the time we read
+        # `cfg["packages"]["radar"]` the include marker is gone.
+        # We therefore read the raw include target from the
+        # per-node YAML's text BEFORE `_resolve_includes` is
+        # applied (the `text` variable already contains the
+        # per-node YAML + include-olt blocks, but the
+        # _resolve_includes-substituted `cfg.packages.radar` is
+        # no longer a marker). The raw text still has the
+        # `!include` marker.
+        include_match = re.search(
+            r"^\s*radar:\s*!include\s+(\S+)\s*$",
+            text,
+            re.MULTILINE,
+        )
+        if include_match:
+            include_file = include_match.group(1)
+            expected_file = f"radar_{radar_type}.yaml"
+            if include_file != expected_file:
+                fail(
+                    f"{node_yaml.relative_to(REPO)} has "
+                    f"`substitutions.radar_type: {radar_type}` "
+                    f"but `packages.radar: !include {include_file}` "
+                    f"— the include target must match the radar "
+                    f"type. Either set "
+                    f"`radar_type: {include_file.replace('radar_', '').replace('.yaml', '')}` "
+                    f"or change the `radar:` include to "
+                    f"`{expected_file}`. The v1.2.0 dispatcher "
+                    f"rejects this mismatch to avoid silent "
+                    f"wrong-platform builds."
+                )
         if radar_type == "ld2410":
             failures = _check_ld2410_text(text)
             kind = "LD2410"

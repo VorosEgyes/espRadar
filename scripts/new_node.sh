@@ -2,11 +2,19 @@
 # Clone radar.yaml into a new node config, generate a per-node
 # api_encryption_key, and append the key to secrets.yaml.
 #
-# Usage: scripts/new_node.sh <name> [radar_type]
+# Usage: scripts/new_node.sh <name> <radar_type>
 #   name:        device_name for the new node (lowercase ASCII, ^[a-z][a-z0-9_]{0,30}$)
-#   radar_type:  optional, defaults to `ld2410`. Set to `ld2420` if the
-#                node is wired to an Hi-Link LD2420 module.
-# Example: scripts/new_node.sh bedroom
+#   radar_type:  REQUIRED. Either `ld2410` (Hi-Link LD2410 / LD2410B /
+#                LD2410C) or `ld2420` (Hi-Link LD2420). There is no
+#                default — the v1.2.0 dispatcher requires an explicit
+#                type so the wrong-platform build is caught at script
+#                time, not at first esphome run. (The v1.1.0
+#                new_node.sh defaulted to ld2410; that default was
+#                removed in v1.2.0 because an LD2420 node silently
+#                receiving an LD2410 firmware is a hard-to-diagnose
+#                failure mode: the UART is alive, the FW version
+#                reads back, but no presence is ever reported.)
+# Example: scripts/new_node.sh bedroom ld2410
 # Example: scripts/new_node.sh kitchen ld2420
 #
 # All nodes use DHCP. Give each node a stable IP via router-side
@@ -21,21 +29,26 @@
 # v1.2.0 (BL-07): the per-node YAML now also carries a
 # `substitutions.radar_type:` field. The preflight
 # (`scripts/preflight.py check_4_radar_yaml`) uses this to dispatch
-# the schema check. If you wire a node to an LD2420, pass `ld2420`
-# as the second argument; if you wire it to an LD2410 / LD2410B /
-# LD2410C, the default `ld2410` is fine.
+# the schema check. The `radar_type` argument to this script is
+# REQUIRED (see the safety note above).
 
 set -euo pipefail
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-    echo "Usage: $0 <name> [radar_type]" >&2
-    echo "Example: $0 bedroom" >&2
+if [[ $# -ne 2 ]]; then
+    echo "Usage: $0 <name> <radar_type>" >&2
+    echo "  radar_type: ld2410 or ld2420 (REQUIRED, no default)" >&2
+    echo "Example: $0 bedroom ld2410" >&2
     echo "Example: $0 kitchen ld2420" >&2
+    echo "" >&2
+    echo "The v1.1.0 default of ld2410 was removed in v1.2.0 because" >&2
+    echo "an LD2420 node silently receiving an LD2410 firmware is a" >&2
+    echo "hard-to-diagnose failure mode. Pass the radar type" >&2
+    echo "explicitly so the dispatcher picks the right schema." >&2
     exit 64
 fi
 
 NAME="$1"
-RADAR_TYPE="${2:-ld2410}"
+RADAR_TYPE="$2"
 
 # Reject names that would collide with reserved substitution keys
 # (the YAML uses 'device_name', 'friendly_name', 'radar_type',
@@ -135,7 +148,6 @@ TITLE_NAME="$(tr '[:lower:]' '[:upper:]' <<< "${NAME:0:1}")${NAME:1}"
 sed \
     -e "s|^  device_name: radar$|  device_name: ${NAME}|" \
     -e "s|^  friendly_name: Radar presence$|  friendly_name: ${TITLE_NAME} presence|" \
-    -e "s|^      name: Radar presence$|      name: ${TITLE_NAME} presence|" \
     -e "s|^    key: !secret api_encryption_key.*$|    key: !secret ${SECRET_KEY}|" \
     -e "s|^  radar_type: ld2410$|  radar_type: ${RADAR_TYPE}|" \
     -e "s|^  radar: !include radar_ld2410.yaml$|  radar: !include radar_${RADAR_TYPE}.yaml|" \
