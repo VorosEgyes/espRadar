@@ -55,4 +55,13 @@ substitutions:
 # `number:`, `button:` sections.
 packages:
   common: !include _common.yaml.include
-  radar: !include __RADAR_INCLUDE__
+  # BL-07: the `radar:` value points to the radar-specific include
+  # file. The default is `radar_ld2410.yaml` (matches the default
+  # `substitutions.radar_type: ld2410`). For an LD2420 node, run
+  # `scripts/new_node.sh <name> ld2420` to generate a per-node YAML
+  # with `radar: !include radar_ld2420.yaml` and `radar_type:
+  # ld2420`. Do NOT run `esphome run radar.yaml` directly without
+  # going through `new_node.sh` first — the per-node YAML
+  # generation is what creates the per-node API encryption key
+  # (BL-06) and appends it to `firmware/secrets.yaml`.
+  radar: !include radar_ld2410.yaml

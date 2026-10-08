@@ -24,6 +24,28 @@
 # energy frame (Normal mode, firmware >= v1.5.4), about 10 Hz. The
 # listener forwards each of the 16 gate-energy values to its own
 # sensor::Sensor entity. No upstream fork required.
+#
+# BL-07 (v1.2.0): the path is `../components` (not `components`).
+# ESPHome resolves `external_components.source.path` relative to the
+# CWD at `esphome run` time, not to the YAML file. Running
+# `esphome run firmware/<node>.yaml` from the repo root gives a CWD
+# of the repo root, and `../components` would point ABOVE the repo
+# root — wrong. The correct path from the repo-root CWD is just
+# `components`; from `firmware/` CWD it is `../components`. The
+# `scripts/new_node.sh` output and `docs/RELEASE_NOTES_v1.2.0.md`
+# explicitly tell the user to run `esphome run` from the repo root
+# with the per-node YAML path, so the `components` path works.
+# However, to support both invocation patterns, the path uses
+# the relative form that works from the firmware/ subdirectory.
+# If you run `esphome run firmware/<node>.yaml` from the repo
+# root, ESPHome resolves `../components` relative to the YAML
+# file's directory (firmware/) — also wrong, it would point to
+# the repo root's parent.
+#
+# The v1.0.0 firmware used `path: components` and the README +
+# release notes required running from the firmware/ subdirectory.
+# The v1.2.0 dispatcher reverses that: run from the repo root, and
+# use `path: components`. The release notes explicitly state this.
 external_components:
   - source:
       type: local

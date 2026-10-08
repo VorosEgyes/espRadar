@@ -59,8 +59,17 @@ cd ~/dev/espRadar
 git pull origin main
 ./scripts/clean.sh
 ./scripts/preflight.py    # must print "PRE-FLIGHT OK"
-cd firmware
-esphome run radar.yaml    # first flash via USB; later OTA from the dashboard
+# Generate the per-node YAML (substitutions + per-node API key in
+# firmware/secrets.yaml, BL-06). Do NOT skip this step — running
+# `esphome run firmware/radar.yaml` directly will fail because the
+# radar.yaml template's substitutions are still the placeholder
+# values (`device_name: radar`, etc.) and the per-node API
+# encryption key is missing from secrets.yaml.
+./scripts/new_node.sh bedroom
+# Now flash from the REPO ROOT (not from firmware/):
+esphome run firmware/bedroom.yaml
+# Pick the USB option at the "Found multiple options" prompt on first
+# flash. Later: OTA from the ESPHome dashboard.
 ```
 
 ### How to flash a new node (LD2420)
@@ -70,16 +79,28 @@ cd ~/dev/espRadar
 git pull origin main
 ./scripts/clean.sh
 ./scripts/preflight.py    # must print "PRE-FLIGHT OK"
-cd firmware
-esphome run radar.yaml
+# Generate the per-node YAML with radar_type=ld2420 (the script
+# patches the packages: block's radar: value to !include
+# radar_ld2420.yaml):
+./scripts/new_node.sh kitchen ld2420
+# Now flash from the REPO ROOT (not from firmware/):
+esphome run firmware/kitchen.yaml
+# Pick the USB option at the "Found multiple options" prompt on first
+# flash. Later: OTA from the ESPHome dashboard.
 ```
 
-(The `radar.yaml` template's `substitutions.radar_type` defaults
-to `ld2410`. For an LD2420 node, run
-`scripts/new_node.sh kitchen ld2420` to generate
-`firmware/kitchen.yaml` with `radar_type: ld2420` and the
-matching `!include radar_ld2420.yaml` in the `packages:` block,
-then `esphome run kitchen.yaml` to flash.)
+> ⚠️ **Run `esphome run` from the repo root, not from
+> `firmware/`.** The v1.2.0 LD2420 build's
+> `external_components.source.path: components` is resolved
+> relative to the CWD at `esphome run` time. Running from the
+> repo root gives CWD = repo root, and the `components/`
+> directory is at the repo root. Running from `firmware/`
+> (CWD = `firmware/`) would resolve `components` to
+> `firmware/components`, which does not exist, and the build
+> would fail with "external component 'ld2420_energy' not
+> found". The v1.0.0 firmware used the same `path: components`
+> but required running from `firmware/`; the v1.2.0 dispatcher
+> reverses that convention — run from the repo root.
 
 ### How to flash a second node (LD2410)
 
@@ -87,8 +108,8 @@ then `esphome run kitchen.yaml` to flash.)
 cd ~/dev/espRadar
 ./scripts/new_node.sh bedroom           # radar_type defaults to ld2410
 # or: ./scripts/new_node.sh bedroom ld2410
-cd firmware
-esphome run bedroom.yaml
+# Flash from the REPO ROOT:
+esphome run firmware/bedroom.yaml
 ```
 
 ### How to flash a second node (LD2420)
@@ -96,8 +117,8 @@ esphome run bedroom.yaml
 ```bash
 cd ~/dev/espRadar
 ./scripts/new_node.sh kitchen ld2420
-cd firmware
-esphome run kitchen.yaml
+# Flash from the REPO ROOT:
+esphome run firmware/kitchen.yaml
 ```
 
 Each node uses DHCP. Give every node a stable IP via
@@ -109,8 +130,9 @@ firmware) — see the `## Network setup` section of README.md.
 ```bash
 cd ~/dev/espRadar
 git checkout v1.0.0 -- firmware/livingroom.yaml components/ld2420_energy/
-cd firmware
-esphome run radar.yaml   # the v1.0.0 livingroom.yaml is checked in
+# Flash from the REPO ROOT (the v1.0.0 firmware uses the same
+# external_components path: components convention as v1.2.0):
+esphome run firmware/radar.yaml
 git checkout main -- firmware/radar.yaml   # restore v1.2.0 YAML for the next node
 ```
 
@@ -123,8 +145,8 @@ expects it to be loaded via `external_components:`.
 ```bash
 cd ~/dev/espRadar
 git checkout v1.1.0 -- firmware/radar.yaml
-cd firmware
-esphome run radar.yaml
+# Flash from the REPO ROOT:
+esphome run firmware/radar.yaml
 git checkout main -- firmware/radar.yaml
 ```
 

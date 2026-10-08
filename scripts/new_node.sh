@@ -138,7 +138,7 @@ sed \
     -e "s|^      name: Radar presence$|      name: ${TITLE_NAME} presence|" \
     -e "s|^    key: !secret api_encryption_key.*$|    key: !secret ${SECRET_KEY}|" \
     -e "s|^  radar_type: ld2410$|  radar_type: ${RADAR_TYPE}|" \
-    -e "s|^  radar: !include __RADAR_INCLUDE__$|  radar: !include radar_${RADAR_TYPE}.yaml|" \
+    -e "s|^  radar: !include radar_ld2410.yaml$|  radar: !include radar_${RADAR_TYPE}.yaml|" \
     "${SRC}" > "${DST}"
 
 echo ""
@@ -148,9 +148,11 @@ echo "  friendly_name: ${TITLE_NAME} presence"
 echo "  radar_type:   ${RADAR_TYPE}"
 echo "  api_encryption_key: ${SECRET_KEY} (in ${SECRETS})"
 echo ""
-echo "Edit ${DST} to set a non-default Wi-Fi SSID / password"
-echo "for this node if you want it on a different network, then:"
-echo "  cd firmware && esphome run ${NAME}.yaml"
+echo "To flash this node, run esphome from the REPO ROOT (not from"
+echo "firmware/) — the LD2420 build's external_components path is"
+echo "relative to the repo root, and the firmware/ subdirectory does"
+echo "not contain a components/ folder:"
+echo "  esphome run firmware/${NAME}.yaml"
 echo ""
 echo "In openHAB, add a new Thing for this node via the Inbox"
 echo "(${TITLE_NAME} presence will auto-discover) and paste the"
