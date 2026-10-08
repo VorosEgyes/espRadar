@@ -24,6 +24,20 @@ jobs:
       # refactor (commit cee8f5a), and the v1.2.0 dispatcher
       # restructured the firmware into a packages:-based template
       # + two radar-specific includes + a common include.
+      #
+      # yamllint config note: the `document-start` rule has THREE
+      # valid values in yamllint 1.30+: `true` (require `---`
+      # start), `false` (default — `---` start NOT required, the
+      # document is valid either way), and `enable` / `disable`
+      # are NOT valid — yamllint 1.35.1 rejects them with
+      # "expected '<document start>', but found '}'". The
+      # v1.1.0 workflow had `document-start: disable` (which
+      # yamllint 1.27 accepted as a synonym for `false`); the
+      # upgrade to yamllint 1.35.1 (in the v1.2.0 CI) rejected it
+      # (see the CI run on commit 773ee19). The fix is to OMIT
+      # the rule entirely (the default `false` is what we want
+      # — none of the firmware YAMLs start with `---` and we
+      # don't want yamllint to require it).
       - name: Lint firmware YAML
         run: |
-          yamllint -d "{extends: default, rules: {line-length: {max: 120}, truthy: {allowed-values: ['true','false','on','off','yes','no']}, document-start: disabled}}}" firmware/radar.yaml firmware/_common.yaml.include firmware/radar_ld2410.yaml firmware/radar_ld2420.yaml firmware/secrets.yaml.example
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}, truthy: {allowed-values: ['true','false','on','off','yes','no']}}}" firmware/radar.yaml firmware/_common.yaml.include firmware/radar_ld2410.yaml firmware/radar_ld2420.yaml firmware/secrets.yaml.example
