@@ -16,6 +16,14 @@ jobs:
           python-version: "3.13"
       - name: Install yamllint
         run: pip install yamllint==1.35.1
+      # v1.2.0 (BL-07, dual-radar dispatcher): the linted file list
+      # changed from the v1.0.0 / v1.1.0 form (which linted
+      # firmware/livingroom.yaml) to the v1.2.0 form (the per-node
+      # template + the three include files + the secrets example).
+      # `firmware/livingroom.yaml` was removed in the v1.0.0 -> v1.1.0
+      # refactor (commit cee8f5a), and the v1.2.0 dispatcher
+      # restructured the firmware into a packages:-based template
+      # + two radar-specific includes + a common include.
       - name: Lint firmware YAML
         run: |
-          yamllint -d "{extends: default, rules: {line-length: {max: 120}, truthy: {allowed-values: ['true','false','on','off','yes','no']}, document-start: disable}}}" firmware/livingroom.yaml firmware/secrets.yaml.example
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}, truthy: {allowed-values: ['true','false','on','off','yes','no']}, document-start: disabled}}}" firmware/radar.yaml firmware/_common.yaml.include firmware/radar_ld2410.yaml firmware/radar_ld2420.yaml firmware/secrets.yaml.example
