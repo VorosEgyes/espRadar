@@ -46,6 +46,11 @@ substitutions:
   ld2410_baud: "256000"
   ld2420_baud: "115200"
 
+# Per-node API key (BL-06); new_node.sh rewrites the secret name.
+api:
+  encryption:
+    key: !secret api_encryption_key_radar
+
 # Pull in the platform-level and radar-specific blocks via ESPHome's
 # `packages:` system. The order matters: `_common.yaml.include`
 # defines the `esphome:`, `esp8266:`, `logger:`, `api:`, `ota:`,
